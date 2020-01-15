@@ -1,0 +1,5 @@
+# Ignore JAR files
+*.jar
+
+# Ignore log files
+*.log

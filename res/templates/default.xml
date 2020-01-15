@@ -1,0 +1,24 @@
+<project name="installation-specific-default-values">
+  <!-- Database configuration -->
+  <property name="sqlserver.host" value="127.0.0.1\\MSSQLSERVER2017" />
+  <property name="sqlserver.port" value="1433" />
+  <property name="sqlserver.user" value="RiskPro" />
+  <property name="sqlserver.db" value="RiskPro" />
+  <property name="sqlserver.schema" value="dbo" />
+  <property name="sqlserver.password" value="welcome" />
+  <property name="sqlserver.collation" value="Latin1_General_BIN" />
+  <property name="sqlserver.system.user" value="sa" />
+  <property name="sqlserver.system.password" value="system" />
+  <property name="backupFile" value="${user.dir}/../tmp/backup_${sqlserver.db}.bak"/>
+  <!-- Data-source configuration -->
+  <property name="db.url" value="jdbc:sqlserver://localhost:1433"/>
+  <property name="db.user" value="riskpro"/>
+  <property name="db.password" value="welcome"/>
+  <property name="db.driver.name" value="mssql"/>
+  <!-- Web-application configuration -->
+  <property name="webapp.name" value="riskpro-web"/>
+  <!-- Web-server configuration -->
+  <property name="jboss.host" value="localhost"/>
+  <property name="jboss.port.http" value="8080"/>
+  <property name="jboss.port.admin" value="9990"/>
+</project>

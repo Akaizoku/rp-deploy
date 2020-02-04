@@ -1,6 +1,6 @@
 # RiskPro-deploy
 
-RiskPro-deploy is a utility script that automatically manages certain tasks depending on configuration files.
+RiskPro-deploy is a utility script to install, configure, and manage OneSumX for Risk Management.
 
 ## Usage
 
@@ -12,17 +12,18 @@ RiskPro-deploy is a utility script that automatically manages certain tasks depe
 5.  Place the license file (if any) in the directory `res\license`;
 6.  Place the patches (if any) in the directory `res\patch`;
 7.  Run the `Deploy-WildFly.ps1` script located with the appropriate parameter for the action to execute:
-    -   clean-up
-    -   extract
-    -   install
-    -   uninstall
-    -   deploy
-    -   undeploy
-    -   package
-    -   configure
-    -   test
-    -   backup
-    -   restore
+    -   backup:     Take a backup of the RiskPro database
+    -   clean-up:   Clean-up RiskPro application files
+    -   configure:  Configure RiskPro
+    -   deploy:     Deploy RiskPro web-application
+    -   extract:    Extract RiskPro distribution files
+    -   install:    Install and configure RiskPro
+    -   package:    Generate RiskPro web-application (WAR file)
+    -   restore:    Restore backup of the RiskPro database
+    -   show:       Display configuration
+    -   undeploy:   Un-deploy RiskPro web-application
+    -   uninstall:  Uninstall RiskPro
+    -   upgrade:    Upgrade RiskPro
 8.  Check the logs
 
 ## Configuration
@@ -72,7 +73,7 @@ Below is an example of the configuration for a SQL Server database:
 ```ini
 DatabaseType          = SQLServer
 DatabaseHost          = 127.0.0.1
-DatabaseInstance      = MSSQLSERVER2017
+DatabaseInstance      = MSSQLSERVER
 DatabasePort          = 1433
 DatabaseName          = RiskPro
 DatabaseSchema        = dbo
@@ -111,7 +112,7 @@ AdminPort             = 9990
 AppServerProtocol     = HTTP
 Hostname              = 127.0.0.1
 HTTPPort              = 8080
-ServiceName           = WildFly11
+ServiceName           = WildFly
 WebServerType         = WildFly
 ```
 

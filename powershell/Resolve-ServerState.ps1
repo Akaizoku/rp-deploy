@@ -40,7 +40,7 @@ function Resolve-ServerState {
       Mandatory   = $false,
       HelpMessage = "Path to the JBoss client"
     )]
-    [ValidateNotNUllOrEmpty ()]
+    [ValidateNotNullOrEmpty ()]
     [String]
     $Path,
     [Parameter (
@@ -49,7 +49,7 @@ function Resolve-ServerState {
       HelpMessage = "Controller"
     )]
     # TODO validate format
-    [ValidateNotNUllOrEmpty ()]
+    [ValidateNotNullOrEmpty ()]
     [String]
     $Controller,
     [Parameter (
@@ -57,7 +57,7 @@ function Resolve-ServerState {
       Mandatory   = $false,
       HelpMessage = "User credentials"
     )]
-    [ValidateNotNUllOrEmpty ()]
+    [ValidateNotNullOrEmpty ()]
     [System.Management.Automation.PSCredential]
     $Credentials,
     [Parameter (

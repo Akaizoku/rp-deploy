@@ -56,7 +56,7 @@ function Invoke-ReloadWildFly {
       Mandatory   = $true,
       HelpMessage = "User credentials"
     )]
-    [ValidateNotNUllOrEmpty ()]
+    [ValidateNotNullOrEmpty ()]
     [System.Management.Automation.PSCredential]
     $Credentials,
     [Parameter (
@@ -64,7 +64,7 @@ function Invoke-ReloadWildFly {
       Mandatory   = $false,
       HelpMessage = "Number of retries"
     )]
-    [ValidateNotNUllOrEmpty ()]
+    [ValidateNotNullOrEmpty ()]
     [Int]
     $RetryCount = 3,
     [Parameter (

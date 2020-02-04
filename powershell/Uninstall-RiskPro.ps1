@@ -9,14 +9,20 @@ function Uninstall-RiskPro {
     .PARAMETER Properties
     The properties parameter corresponds to the configuration of the application.
 
-    .EXAMPLE
-    Uninstall-RiskPro -Properties $Properties
+    .PARAMETER WebServers
+    The web-servers parameter corresponds to the configuration of the application servers.
+
+    .PARAMETER Servers
+    The servers parameter corresponds to the configuration of the server grid.
+
+    .PARAMETER Unattended
+    The unattended switch specifies if the script should run in non-interactive mode.
 
     .NOTES
     File name:      Uninstall-RiskPro.ps1
     Author:         Florian Carrier
     Creation date:  16/12/2019
-    Last modified:  16/12/2019
+    Last modified:  03/02/2020
   #>
   [CmdletBinding (
     SupportsShouldProcess = $true
@@ -30,6 +36,22 @@ function Uninstall-RiskPro {
     [ValidateNotNullOrEmpty ()]
     [System.Collections.Specialized.OrderedDictionary]
     $Properties,
+    [Parameter (
+      Position    = 2,
+      Mandatory   = $true,
+      HelpMessage = "Application servers properties"
+    )]
+    [ValidateNotNullOrEmpty ()]
+    [System.Collections.Specialized.OrderedDictionary]
+    $WebServers,
+    [Parameter (
+      Position    = 3,
+      Mandatory   = $true,
+      HelpMessage = "Server grid properties"
+    )]
+    [ValidateNotNullOrEmpty ()]
+    # [System.Collections.Specialized.OrderedDictionary]
+    $Servers,
     [Parameter (
       HelpMessage = "Flag to ignore database"
     )]
@@ -50,9 +72,9 @@ function Uninstall-RiskPro {
     # Encryption key
     $EncryptionKey = Get-Content -Path (Join-Path -Path $Properties.SecurityDirectory -ChildPath $Properties.EncryptionKey) -Encoding "UTF8"
     # Database system administrator credentials
-    $DatabaseProperties.DBACredentials = Get-ScriptCredentials -UserName $DatabaseProperties.DatabaseAdminUsername -Password $DatabaseProperties.DatabaseAdminPassword -EncryptionKey $EncryptionKey -Label "database system administrator" -Unattended:$Unattended
+    $Properties.DBACredentials = Get-ScriptCredentials -UserName $Properties.DatabaseAdminUsername -Password $Properties.DatabaseAdminPassword -EncryptionKey $EncryptionKey -Label "database system administrator" -Unattended:$Unattended
     # RiskPro database user credentials
-    $DatabaseProperties.RPDBCredentials = Get-ScriptCredentials -UserName $DatabaseProperties.DatabaseUsername -Password $DatabaseProperties.DatabaseUserPassword -EncryptionKey $EncryptionKey -Label "RiskPro database user" -Unattended:$Unattended
+    $Properties.RPDBCredentials = Get-ScriptCredentials -UserName $Properties.DatabaseUsername -Password $Properties.DatabaseUserPassword -EncryptionKey $EncryptionKey -Label "RiskPro database user" -Unattended:$Unattended
     # Default admin user for RiskPro (force unattended flag to use value from default configuration file)
     $RiskProAdminCredentials = Get-ScriptCredentials -UserName "admin" -Password $Properties.DefaultAdminPassword -EncryptionKey $EncryptionKey -Label "RiskPro administration user" -Unattended
   }
@@ -69,39 +91,46 @@ function Uninstall-RiskPro {
     # Test database connection
     if (-Not $SkipDB) {
       Write-Log -Type "INFO" -Object "Checking database server connectivity"
-      $DatabaseCheck = Test-SQLConnection -Server $DatabaseProperties.DatabaseServerInstance -Database "master" -Security -Credentials $DatabaseProperties.DBACredentials
+      $DatabaseCheck = Test-DatabaseConnection -DatabaseVendor $Properties.DatabaseType -Hostname $Properties.DatabaseHost -PortNumber $Properties.DatabasePort -Instance $Properties.DatabaseInstance -Credentials $Properties.DBACredentials
       if (-Not $DatabaseCheck) {
-        Write-Log -Type "ERROR" -Object "Unable to reach database server ($($DatabaseProperties.DatabaseServerInstance))" -ExitCode 1
+        Write-Log -Type "ERROR" -Object "Unable to reach database server ($($Properties.DatabaseServerInstance))" -ExitCode 1
       }
     }
-    # --------------------------------------------------------------------------
-    # Undeploy web-application(s)
-    # --------------------------------------------------------------------------
-    # Loop through the grid
+    # Check applications servers
     foreach ($Server in $Servers) {
       # Get server properties
       $WebServer = $WebServers[$Server.Hostname]
-      $WildFlyAdminCredentials = Get-ScriptCredentials -UserName $WebServer.AdminUserName -Password $WebServer.AdminPassword -EncryptionKey $EncryptionKey -Label "WildFly administration user" -Unattended:$Unattended
-      # --------------------------------------------------------------------
-      # TODO add option to use credentials for remote servers
+      $AdminCredentials = Get-ScriptCredentials -UserName $WebServer.AdminUserName -Password $WebServer.AdminPassword -EncryptionKey $EncryptionKey -Label "$($Webserver.WebServerType) administration user" -Unattended:$Unattended
+      # TODO manage remote servers
       Write-Log -Type "INFO" -Object "Check $($Server.Hostname) host web-server"
       $Running = Resolve-ServerState -Path $Properties.JBossClient -Controller ($WebServer.Hostname + ':' + $WebServer.AdminPort) -HTTPS:$Properties.EnableHTTPS
       if ($Running -eq $false) {
         # Start web-server
         Start-WebServer -Properties ($Properties + $WebServer)
       }
-      # --------------------------------------------------------------------
-      # Remove web-application
-      $UndeployWebApp = Invoke-DeployWebApp -Properties ($Properties + $DatabaseProperties + $WebServer) -Credentials $WildFlyAdminCredentials -Undeploy
-      # --------------------------------------------------------------------
+    }
+    # --------------------------------------------------------------------------
+    # Undeploy web-application(s)
+    # --------------------------------------------------------------------------
+    Invoke-UndeployRiskPro -Properties $Properties -WebServers $WebServers -Servers $Servers -Unattended:$Unattended
+    # --------------------------------------------------------------------------
+    # Remove custom configuration
+    # --------------------------------------------------------------------------
+    # Loop through the grid
+    foreach ($Server in $Servers) {
+      # Get server properties
+      $WebServer = $WebServers[$Server.Hostname]
+      $AdminCredentials = Get-ScriptCredentials -UserName $WebServer.AdminUserName -Password $WebServer.AdminPassword -EncryptionKey $EncryptionKey -Label "$($Webserver.WebServerType) administration user" -Unattended:$Unattended
       # Remove web-server configuration
-      Invoke-SetupJBoss -Properties ($Properties + $DatabaseProperties + $WebServer) -Server $Server -Credentials $WildFlyAdminCredentials -Remove
+      Invoke-SetupJBoss -Properties ($Properties + $WebServer) -Server $Server -Credentials $AdminCredentials -Remove
     }
     # --------------------------------------------------------------------------
     # Drop database
     # --------------------------------------------------------------------------
-    if (-Not $SkipDB) {
-      Invoke-SetupDatabase -Properties ($Properties + $DatabaseProperties) -Drop
+    if ($SkipDB) {
+      Write-Log -Type "WARN" -Object "Skipping database removal"
+    } else {
+      Invoke-SetupDatabase -Properties $Properties -Drop
     }
     # --------------------------------------------------------------------------
     # Remove files

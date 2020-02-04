@@ -33,7 +33,7 @@ function Wait-WildFly {
       Mandatory   = $true,
       HelpMessage = "Path to the JBoss client"
     )]
-    [ValidateNotNUllOrEmpty ()]
+    [ValidateNotNullOrEmpty ()]
     [String]
     $Path,
     [Parameter (
@@ -42,7 +42,7 @@ function Wait-WildFly {
       HelpMessage = "Controller"
     )]
     # TODO validate format
-    [ValidateNotNUllOrEmpty ()]
+    [ValidateNotNullOrEmpty ()]
     [String]
     $Controller,
     [Parameter (
@@ -50,7 +50,7 @@ function Wait-WildFly {
       Mandatory   = $false,
       HelpMessage = "User credentials"
     )]
-    [ValidateNotNUllOrEmpty ()]
+    [ValidateNotNullOrEmpty ()]
     [System.Management.Automation.PSCredential]
     $Credentials,
     [Parameter (

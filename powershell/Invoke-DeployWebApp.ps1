@@ -4,19 +4,19 @@ function Invoke-DeployWebApp {
     Deploy application
 
     .DESCRIPTION
-    Deploy (or un-deploy) an application to a WildFly instance
+    Deploy RiskPro to a WildFly instance
 
     .PARAMETER Properties
     The properties parameter corresponds to the configuration of the application.
 
+    .PARAMETER Controller
+    The controller parameter corresponds to the controller of the application server.
+
+    .PARAMETER Hostname
+    The hostname parameter corresponds to the name of the application server host.
+
     .PARAMETER Credentials
-    The credentials parameter corresponds to the credentials of the WildFly instance administration account.
-
-    .PARAMETER Force
-    The force switch defines what happens if an application is already deployed.
-
-    .PARAMETER Undeploy
-    The undeploy switch defines if the application should be undeployed.
+    The credentials parameter corresponds to the credentials of the application server administration account.
 
     .INPUTS
     None. You cannot pipe objects to Invoke-DeployWebApp.
@@ -28,7 +28,7 @@ function Invoke-DeployWebApp {
     File name:      Invoke-DeployWebApp.ps1
     Author:         Florian Carrier
     Creation date:  15/10/2019
-    Last modified:  15/01/2020
+    Last modified:  17/01/2020
   #>
   [CmdletBinding (
     SupportsShouldProcess = $true
@@ -45,66 +45,49 @@ function Invoke-DeployWebApp {
     [Parameter (
       Position    = 2,
       Mandatory   = $true,
+      HelpMessage = "Application server controller"
+    )]
+    [ValidateNotNullOrEmpty ()]
+    [String]
+    $Controller,
+    [Parameter (
+      Position    = 3,
+      Mandatory   = $true,
+      HelpMessage = "Application server hostname"
+    )]
+    [ValidateNotNullOrEmpty ()]
+    [String]
+    $Hostname,
+    [Parameter (
+      Position    = 4,
+      Mandatory   = $true,
       HelpMessage = "User credentials"
     )]
-    [ValidateNotNUllOrEmpty ()]
+    [ValidateNotNullOrEmpty ()]
     [System.Management.Automation.PSCredential]
-    $Credentials,
-    [Parameter (
-      HelpMessage = "Force switch to overwrite existing deployment"
-    )]
-    [Switch]
-    $Force,
-    [Parameter (
-      HelpMessage = "Undeploy switch"
-    )]
-    [Switch]
-    $Undeploy
+    $Credentials
   )
   Begin {
     # Get global preference variables
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
-    # Controller
-    $Controller = $Properties.Hostname + ':' + $Properties.AdminPort
-    # WAR file
-    $WARFile = "$($Properties.RPWebApplication).war"
-    $WARPath = Join-Path -Path $Properties.RPWebAppDirectory -ChildPath $WARFile
+    $WARPath = Join-Path -Path $Properties.RPWebAppDirectory -ChildPath "$($Properties.RPWebApplication).war"
   }
   Process {
-    if ($Undeploy) {
-      # Undeploy application
-      Write-Log -Type "INFO" -Object "Undeploying $($Properties.RPWebApplication) application on host $($Properties.Hostname)"
-      if ($PSBoundParameters.ContainsKey("Credentials")) {
-        $UndeployApplication = Invoke-UndeployApplication -Path $Properties.JBossClient -Controller $Controller -Application $WARFile -Credentials $Credentials
-      } else {
-        $UndeployApplication = Invoke-UndeployApplication -Path $Properties.JBossClient -Controller $Controller -Application $WARFile
-      }
-      # Check outcome
-      if (Select-String -InputObject $UndeployApplication -Pattern "Undeploy failed" -SimpleMatch -Quiet) {
-        # If [WFLYCTL0216: Resource not found]
-        if (Select-String -InputObject $UndeployApplication -Pattern '("WFLYCTL0216:)(.|\n)*(not found")' -Quiet) {
-          Write-Log -Type "WARN" -Object "$WARFile is not deployed on host $($Properties.Hostname)"
+    Write-Log -Type "INFO" -Object "Deploying $($Properties.RPWebApplication) application on host $Hostname"
+    # Check application server type
+    switch ($WebServer.WebServerType) {
+      "WildFly" {
+        $DeployApplication = Invoke-DeployApplication -Path $Properties.JBossClient -Controller $Controller -Application $WARPath -Credentials $Credentials -Force
+        # Check outcome
+        # TODO expand
+        if ($DeployApplication) {
+          Write-Log -Type "ERROR" -Object $DeployApplication -ExitCode 1
         } else {
-          Write-Log -Type "WARN" -Object "$WARFile could not be undeployed on host $($Properties.Hostname)"
-          Write-Log -Type "ERROR" -Object $UndeployApplication -ExitCode 1
+          Write-Log -Type "CHECK" -Object "$($Properties.RPWebApplication) application deployed successfully on host $Hostname"
         }
-      } else {
-        Write-Log -Type "CHECK" -Object "$($Properties.RPWebApplication) application undeployed successfully on host $($Properties.Hostname)"
       }
-    } else {
-      # Deploy application
-      Write-Log -Type "INFO" -Object "Deploying $($Properties.RPWebApplication) application on host $($Properties.Hostname)"
-      if ($PSBoundParameters.ContainsKey("Credentials")) {
-        $DeployApplication = Invoke-DeployApplication -Path $Properties.JBossClient -Controller $Controller -Application $WARPath -Force:$Force -Credentials $Credentials
-      } else {
-        $DeployApplication = Invoke-DeployApplication -Path $Properties.JBossClient -Controller $Controller -Application $WARPath -Force:$Force
-      }
-      # Check outcome
-      # TODO expand
-      if ($DeployApplication) {
-        Write-Log -Type "ERROR" -Object $DeployApplication
-      } else {
-        Write-Log -Type "CHECK" -Object "$($Properties.RPWebApplication) application deployed successfully on host $($Properties.Hostname)"
+      default {
+        Write-Log -Type "ERROR" -Object "$($WebServer.WebServerType) application server is not supported" -ExitCode 1
       }
     }
   }

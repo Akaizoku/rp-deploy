@@ -9,14 +9,20 @@ function Install-RiskPro {
     .PARAMETER Properties
     The properties parameter corresponds to the configuration of the application.
 
-    .EXAMPLE
-    Install-RiskPro -Properties $Properties
+    .PARAMETER WebServers
+    The web-servers parameter corresponds to the configuration of the application servers.
+
+    .PARAMETER Servers
+    The servers parameter corresponds to the configuration of the server grid.
+
+    .PARAMETER Unattended
+    The unattended switch specifies if the script should run in non-interactive mode.
 
     .NOTES
     File name:      Install-RiskPro.ps1
     Author:         Florian Carrier
     Creation date:  16/12/2019
-    Last modified:  20/12/2019
+    Last modified:  03/02/2020
   #>
   [CmdletBinding (
     SupportsShouldProcess = $true
@@ -31,6 +37,22 @@ function Install-RiskPro {
     [System.Collections.Specialized.OrderedDictionary]
     $Properties,
     [Parameter (
+      Position    = 2,
+      Mandatory   = $true,
+      HelpMessage = "Application servers properties"
+    )]
+    [ValidateNotNullOrEmpty ()]
+    [System.Collections.Specialized.OrderedDictionary]
+    $WebServers,
+    [Parameter (
+      Position    = 3,
+      Mandatory   = $true,
+      HelpMessage = "Server grid properties"
+    )]
+    [ValidateNotNullOrEmpty ()]
+    # [System.Collections.Specialized.OrderedDictionary]
+    $Servers,
+    [Parameter (
       HelpMessage = "Flag to ignore database"
     )]
     [Switch]
@@ -44,15 +66,27 @@ function Install-RiskPro {
   Begin {
     # Get global preference variables
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
-    # ----------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
+    # Repository structure
+    # --------------------------------------------------------------------------
+    # Check custom paths
+    $CustomPaths = Resolve-Array -Array $Properties.CustomPaths -Delimiter ","
+    foreach ($CustomPath in $CustomPaths) {
+      # Create directory if it does not yet exist
+      if (Test-Object -Path $Properties.$CustomPath -NotFound) {
+        Write-Log -Type "DEBUG" -Object "Creating path $($Properties.$CustomPath)"
+        New-Item -ItemType "Directory" -Path $Properties.$CustomPath -Force | Out-Null
+      }
+    }
+    # --------------------------------------------------------------------------
     # Security
-    # ----------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Encryption key
     $EncryptionKey = Get-Content -Path (Join-Path -Path $Properties.SecurityDirectory -ChildPath $Properties.EncryptionKey) -Encoding "UTF8"
     # Database system administrator credentials
-    $DatabaseProperties.DBACredentials = Get-ScriptCredentials -UserName $DatabaseProperties.DatabaseAdminUsername -Password $DatabaseProperties.DatabaseAdminPassword -EncryptionKey $EncryptionKey -Label "database system administrator" -Unattended:$Unattended
+    $Properties.DBACredentials = Get-ScriptCredentials -UserName $Properties.DatabaseAdminUsername -Password $Properties.DatabaseAdminPassword -EncryptionKey $EncryptionKey -Label "database system administrator" -Unattended:$Unattended
     # RiskPro database user credentials
-    $DatabaseProperties.RPDBCredentials = Get-ScriptCredentials -UserName $DatabaseProperties.DatabaseUsername -Password $DatabaseProperties.DatabaseUserPassword -EncryptionKey $EncryptionKey -Label "RiskPro database user" -Unattended:$Unattended
+    $Properties.RPDBCredentials = Get-ScriptCredentials -UserName $Properties.DatabaseUsername -Password $Properties.DatabaseUserPassword -EncryptionKey $EncryptionKey -Label "RiskPro database user" -Unattended:$Unattended
     # Default admin user for RiskPro (force unattended flag to use value from default configuration file)
     $RiskProAdminCredentials = Get-ScriptCredentials -UserName "admin" -Password $Properties.DefaultAdminPassword -EncryptionKey $EncryptionKey -Label "RiskPro administration user" -Unattended
   }
@@ -87,9 +121,9 @@ function Install-RiskPro {
     }
     # Test database connection
     Write-Log -Type "INFO" -Object "Checking database server connectivity"
-    $Check = Test-SQLConnection -Server $DatabaseProperties.DatabaseServerInstance -Database "master" -Credentials $DatabaseProperties.DBACredentials
-    if (-Not $Check) {
-      Write-Log -Type "ERROR" -Object "Unable to reach database server ($($DatabaseProperties.DatabaseServerInstance))" -ExitCode 1
+    $DatabaseCheck = Test-DatabaseConnection -DatabaseVendor $Properties.DatabaseType -Hostname $Properties.DatabaseHost -PortNumber $Properties.DatabasePort -Instance $Properties.DatabaseInstance -Credentials $Properties.DBACredentials
+    if (-Not $DatabaseCheck) {
+      Write-Log -Type "ERROR" -Object "Unable to reach database server ($($Properties.DatabaseServerInstance))" -ExitCode 1
     }
     # --------------------------------------------------------------------------
     # Check sources
@@ -133,12 +167,14 @@ function Install-RiskPro {
       Set-EnvironmentVariable -Name $Properties.RiskProHomeVariable -Value $Properties.RPHomeDirectory -Scope $Properties.EnvironmentVariableScope
       Write-Log -Type "CHECK" -Object "$($Properties.RiskProHomeVariable) environment variable has been set"
     }
-    # ----------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Setup database
-    # ----------------------------------------------------------------------
-    if (-Not $SkipDB) {
+    # --------------------------------------------------------------------------
+    if ($SkipDB) {
+      Write-Log -Type "WARN" -Object "Skipping database setup"
+    } else {
       # Create user and database
-      Invoke-SetupDatabase -Properties ($Properties + $DatabaseProperties)
+      Invoke-SetupDatabase -Properties $Properties
     }
     # Configure grid
     if ($Properties.CustomGridConfiguration -eq $true) {
@@ -147,19 +183,12 @@ function Install-RiskPro {
       foreach ($Server in $Servers) {
         # Get server properties
         $WebServer = $WebServers[$Server.Hostname]
-        Invoke-GridSetup -Properties ($Properties + $DatabaseProperties +$WebServer) -Server $Server
+        Invoke-GridSetup -Properties ($Properties + $WebServer) -Server $Server
       }
     }
-    # ----------------------------------------------------------------------
-    # Setup web-application
-    # ----------------------------------------------------------------------
-    # Setup security
-    # TODO configure shiro.ini
-    # Generate web-application
-    Invoke-GenerateWebApp -Properties $Properties
-    # ----------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Setup servers
-    # ----------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Loop through the grid
     foreach ($Server in $Servers) {
       Write-Log -Type "INFO" -Object "Setup $($Server.Hostname) host"
@@ -168,32 +197,59 @@ function Install-RiskPro {
       # Encryption key
       $EncryptionKey = Get-Content -Path (Join-Path -Path $Properties.SecurityDirectory -ChildPath $Properties.EncryptionKey) -Encoding "UTF8"
       # WildFly administration account
-      $WildFlyAdminCredentials = Get-ScriptCredentials -UserName $WebServer.AdminUserName -Password $WebServer.AdminPassword -EncryptionKey $EncryptionKey -Label "WildFly administration user" -Unattended:$Unattended
+      $AdminCredentials = Get-ScriptCredentials -UserName $WebServer.AdminUserName -Password $WebServer.AdminPassword -EncryptionKey $EncryptionKey -Label "$($WebServer.WebServerType) administration user" -Unattended:$Unattended
       # Check web-server status
       Write-Log -Type "DEBUG" -Object "Check web-server status"
-      $Running = Resolve-ServerState -Path $Properties.JBossClient -Controller ($WebServer.Hostname + ':' + $WebServer.AdminPort) -HTTPS:$Properties.EnableHTTPS
+      $Controller = $WebServer.Hostname + ':' + $WebServer.AdminPort
+      $Running = Resolve-ServerState -Path $Properties.JBossClient -Controller $Controller -HTTPS:$Properties.EnableHTTPS
       if ($Running -eq $false) {
         Write-Log -Type "WARN" -Object "Web-Server $($Server.Hostname) is not running"
         if ($Attended) {
           $Confirm = Confirm-Prompt -Prompt "Do you want to start the web-server?"
         }
-        if ($Unnattended -Or $Confirm) {
+        if ($Unattended -Or $Confirm) {
           # Start web-server
-          Write-Log -Type "INFO" -Object "Start web-server"
           Start-WebServer -Properties ($Properties + $WebServer)
+          # Wait for server to run
+          Wait-WildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $AdminCredentials -TimeOut 300 -RetryInterval 1
         }
       }
       # Configure web-server
-      Invoke-SetupJBoss -Properties ($Properties + $DatabaseProperties + $WebServer) -Server $Server -Credentials $WildFlyAdminCredentials
-      # Deploy web-application
-      Invoke-DeployWebApp -Properties ($Properties + $DatabaseProperties + $WebServer) -Credentials $WildFlyAdminCredentials -Force
+      Invoke-SetupJBoss -Properties ($Properties + $WebServer) -Server $Server -Credentials $AdminCredentials
     }
-    # ----------------------------------------------------------------------
+    # --------------------------------------------------------------------------
+    # Deploy application
+    # --------------------------------------------------------------------------
+    # Setup security
+    # TODO configure shiro.ini
+    # Generate web-application
+    Invoke-GenerateWebApp -Properties $Properties
+    # Deploy web-application
+    Invoke-DeployRiskPro -Properties $Properties -WebServers $WebServers -Servers $Servers -Unattended:$Unattended
+    # --------------------------------------------------------------------------
     # Setup system model
-    # ----------------------------------------------------------------------
-    # Create system model
-    Invoke-CreateModel -Properties $RiskProBatchClientProperties -Credentials $RiskProAdminCredentials -Name $Properties.SystemModelName -Type $Properties.SystemModelType -Description $Properties.SystemModelDescription -Currency $Properties.SystemModelCurrency -Template $Properties.SystemModelTemplate -Synchronous | Out-Null
-    # ----------------------------------------------------------------------
-    Write-Log -Type "CHECK" -Object "RiskPro has been successfully installed"
+    # --------------------------------------------------------------------------
+    # Create user group
+    Write-Log -Type "INFO" -Object "Creating administration user group"
+    $CreateUserGroup = Invoke-CreateUserGroup -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -GroupName "Administrators"
+    Assert-RiskProBatchClientOutcome -Log $CreateUserGroup -Object "Administrators user group" -Verb "create"
+    # Add administration user to administration user group
+    Write-Log -Type "INFO" -Object "Adding admin user to administration user group"
+    $ModifyUser = Invoke-ModifyUser -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -UserName $RiskProAdminCredentials.UserName -NewUserName $RiskProAdminCredentials.UserName -NewEmployeeName "Administrator" -UserGroups "Administrators"
+    Assert-RiskProBatchClientOutcome -Log $ModifyUser -Object "Administrator user" -Verb "add"
+    # Create system model group
+    Write-Log -Type "INFO" -Object "Creating model group ""$($Properties.SystemModelGroup)"""
+    $CreateModelGroup = Invoke-CreateModelGroup -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -ModelGroup $Properties.SystemModelGroup
+    Assert-RiskProBatchClientOutcome -Log $CreateModelGroup -Object """$($Properties.SystemModelGroup)"" model group" -Verb "create"
+    # Grant permissions on system model group to administration user group
+    Write-Log -Type "INFO" -Object "Granting permissions to administration user group"
+    $GrantRole = Grant-Role -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -ModelGroupName $Properties.SystemModelGroup -RoleName "Administrator" -UserGroupName "Administrators"
+    Assert-RiskProBatchClientOutcome -Log $GrantRole -Object "Administrator role" -Verb "grant"
+    # Create blank system model
+    Write-Log -Type "INFO" -Object "Creating $($Properties.SystemModelName) model"
+    $CreateModel = Invoke-CreateModel -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -ModelName $Properties.SystemModelName -Type $Properties.SystemModelType -Description $Properties.SystemModelDescription -Currency $Properties.SystemModelCurrency -ModelGroupName $Properties.SystemModelGroup
+    Assert-RiskProBatchClientOutcome -Log $CreateModel -Object """$($Properties.SystemModelName)"" model" -Verb "create"
+    # --------------------------------------------------------------------------
+    Write-Log -Type "CHECK" -Object "RiskPro $($Properties.RiskProVersion) has been successfully installed"
   }
 }

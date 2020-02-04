@@ -28,7 +28,7 @@ function Invoke-SetupJBoss {
     File name:      Invoke-SetupJBoss.ps1
     Author:         Florian Carrier
     Creation date:  15/10/2019
-    Last modified:  14/01/2020
+    Last modified:  20/01/2020
     WARNING         Do not use the RiskPro ANT client (see issue RPD-3)
   #>
   [CmdletBinding ()]
@@ -54,7 +54,7 @@ function Invoke-SetupJBoss {
       Mandatory   = $true,
       HelpMessage = "User credentials"
     )]
-    [ValidateNotNUllOrEmpty ()]
+    [ValidateNotNullOrEmpty ()]
     [System.Management.Automation.PSCredential]
     $Credentials,
     [Parameter (
@@ -67,12 +67,15 @@ function Invoke-SetupJBoss {
     # Get global preference variables
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
     # Set properties
-    $JavaProperties = Get-JavaProperties -Properties $Properties -Type "JBoss"
-    $Redirection    = "2>&1"
     $Controller     = $Properties.Hostname + ':' + $Properties.AdminPort
+    # Security domain
+    $SecurityDomain = $Properties.DataSourceName
     # Force-load JBOSS_HOME environment variable
     # TODO investigate why is it required in the script scope
     Sync-EnvironmentVariable -Name $Properties.WildFlyHomeVariable -Scope $Properties.EnvironmentVariableScope | Out-Null
+    # Data-source connection validation parameters
+    $ConnectionChecker  = "org.jboss.jca.adapters.jdbc.extensions.mssql.MSSQLValidConnectionChecker"
+    $ExceptionSorter    = "org.jboss.jca.adapters.jdbc.extensions.mssql.MSSQLExceptionSorter"
   }
   Process {
     if ($Remove) {
@@ -85,7 +88,16 @@ function Invoke-SetupJBoss {
         $RemoveDataSource = Remove-DataSource -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -DataSource $Properties.DataSourceName
         Assert-JBossClientOutcome -Log $RemoveDataSource -Object "$($Properties.DataSourceName) data-source" -Verb "remove"
       } else {
-        Write-Log -Type "WARN"  -Object "Data-source $($Properties.DataSourceName) is not registered"
+        Write-Log -Type "WARN" -Object "Data-source $($Properties.DataSourceName) is not registered"
+      }
+      # ------------------------------------------------------------------------
+      # Remove data-source security domain
+      Write-Log -Type "INFO" -Object "Removing $($Properties.DataSourceName) security domain"
+      if (Test-SecurityDomain -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -SecurityDomain $SecurityDomain) {
+        $RemoveSecurityDomain = Remove-SecurityDomain -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -SecurityDomain $SecurityDomain
+        Assert-JBossClientOutcome -Log $RemoveSecurityDomain -Object "$($Properties.DataSourceName) security domain" -Verb "remove"
+      } else {
+        Write-Log -Type "WARN" -Object "Security domain $($Properties.DataSourceName) does not exist"
       }
       # ------------------------------------------------------------------------
       # Remove custom web-server settings
@@ -133,9 +145,9 @@ function Invoke-SetupJBoss {
         $RemoveModule = Remove-Module -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Module $Properties.JDBCDriverModule
         if (Select-String -InputObject $RemoveModule -Pattern "Failed to delete" -SimpleMatch -Quiet) {
           # TODO fix file lock issue
+          Write-Log -Type "ERROR" -Object $RemoveModule
           Write-Log -Type "WARN"  -Object "Module $($Properties.JDBCDriverModule) could not be uninstalled"
           # Write-Log -Type "ERROR" -Object $RemoveModule -ExitCode 1
-          Write-Log -Type "ERROR" -Object $RemoveModule
         } elseif (Select-String -InputObject $RemoveModule -Pattern "Failed to locate module" -SimpleMatch -Quiet) {
           Write-Log -Type "WARN"  -Object "Module $($Properties.JDBCDriverModule) is not installed"
         } else {
@@ -145,6 +157,11 @@ function Invoke-SetupJBoss {
       } else {
         Write-Log -Type "WARN"  -Object "Module $($Properties.JDBCDriverModule) is not installed"
       }
+      # ------------------------------------------------------------------------
+      # Reload web-server
+      Invoke-ReloadWildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials
+      # ------------------------------------------------------------------------
+      Write-Log -Type "CHECK" -Object "$($Server.Hostname) web-server de-configuration complete"
     } else {
       # ------------------------------------------------------------------------
       # Configure web-server
@@ -190,15 +207,58 @@ function Invoke-SetupJBoss {
       $AddJDBCDriver = Add-JDBCDriver -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Driver $Properties.DatabaseDriver -Module $Properties.JDBCDriverModule -Class $Properties.JDBCDriverClass
       Assert-JBossClientOutcome -Log $AddJDBCDriver -Object "$($Properties.DatabaseDriver) JDBC driver" -Verb "install"
       # ------------------------------------------------------------------------
-      # Register data-source
-      Write-Log -Type "INFO" -Object "Register $($Properties.DataSourceName) data-source"
-      $AddDataSource = Add-DataSource -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -DataSource $Properties.DataSourceName -Driver $Properties.DatabaseDriver -ConnectionURL $Properties.DatabaseURL -UserName $Properties.RPDBCredentials.UserName -Password $Properties.RPDBCredentials.GetNetworkCredential().Password
-      Assert-JBossClientOutcome -Log $AddDataSource -Object "$($Properties.DataSourceName) data-source" -Verb "register"
+      # Check PicketBox encryption module
+      $PicketBoxModulePath  = Join-Path -Path $Properties.JBossHome -ChildPath "modules\system\layers\base\org\picketbox\main"
+      $PicketBoxModule      = Get-ChildItem -Path $PicketBoxModulePath -Filter "picketbox-?.?.?.Final.jar"
+      if ($PicketBoxModule) {
+        # Encrypt database password
+        # WARNING Unsecure encryption (see https://issues.redhat.com/browse/JBAS-4460)
+        Write-Log -Type "DEBUG" -Object "Encrypt database password"
+        $Java = Join-Path -Path (Get-EnvironmentVariable -Name $Properties.JavaHomeVariable -Scope $Properties.EnvironmentVariableScope) -ChildPath "bin\java.exe"
+        $SecurityClass        = "org.picketbox.datasource.security.SecureIdentityLoginModule"
+        $EncryptionCommand    = "& ""$Java"" -classpath ""$($PicketBoxModule.FullName)"" $SecurityClass ""$($Properties.RPDBCredentials.GetNetworkCredential().Password)"""
+        Write-Log -Type "DEBUG" -Object $EncryptionCommand -Obfuscate $Properties.RPDBCredentials.GetNetworkCredential().Password
+        $Encryption = Invoke-Expression -Command $EncryptionCommand | Out-String
+        $EncryptedPassword = Select-String -InputObject $Encryption -Pattern '(?<=Encoded password: ).*' | ForEach-Object { $_.Matches.Value }
+        Write-Log -Type "DEBUG" -Object $Encryption -Obfuscate $EncryptedPassword
+        # Add security domain
+        Write-Log -Type "INFO" -Object "Create data-source security domain"
+        $AddSecurityDomain = Add-SecurityDomain -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -SecurityDomain $SecurityDomain
+        Assert-JBossClientOutcome -Log $AddSecurityDomain -Object "$($Properties.DataSourceName) security domain" -Verb "create"
+        # Add authentication method
+        Write-Log -Type "DEBUG" -Object "Set security domain authentication method"
+        $SetAuthenticationMethod = Add-Resource -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Resource "/subsystem=security/security-domain=$SecurityDomain/authentication=\""classic\"""
+        if (Test-JBossClientOutcome -Log $SetAuthenticationMethod) {
+          Write-Log -Type "DEBUG" -Object "Security domain authentication method set successfully"
+        } else {
+          Write-Log -Type "WARN" -Object "Security domain authentication could not be set"
+          Write-Log -Type "ERROR" -Object $SetAuthenticationMethod -ExitCode 1
+        }
+        # Configure authentication
+        Write-Log -Type "DEBUG" -Object "Configure security domain authentication"
+        $ConfigureAuthentication = Add-Resource -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Resource "/subsystem=security/security-domain=$SecurityDomain/authentication=\""classic\""/login-module=\""$SecurityClass\"":add(code=\""$SecurityClass\"",flag=\""required\"",module-options={\""username\"" => \""$($Properties.RPDBCredentials.UserName)\"",\""password\"" =>\""$EncryptedPassword\"",\""managedConnectionFactoryName\"" =>\""name=java:/$($Properties.DataSourceName)\""})"
+        if (Test-JBossClientOutcome -Log $ConfigureAuthentication) {
+          Write-Log -Type "DEBUG" -Object "Security domain authentication configured successfully"
+        } else {
+          Write-Log -Type "WARN" -Object "Security domain authentication could not be configured"
+          Write-Log -Type "ERROR" -Object $ConfigureAuthentication -ExitCode 1
+        }
+        # Register data-source with security domain
+        Write-Log -Type "INFO" -Object "Register $($Properties.DataSourceName) data-source"
+        $AddDataSource = Add-DataSource -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -DataSource $Properties.DataSourceName -Driver $Properties.DatabaseDriver -ConnectionURL $Properties.DatabaseURL -SecurityDomain $SecurityDomain -ConnectionChecker $ConnectionChecker -ExceptionSorter $ExceptionSorter
+        Assert-JBossClientOutcome -Log $AddDataSource -Object "$($Properties.DataSourceName) data-source" -Verb "register"
+      } else {
+        # Register data-source without any encryption
+        Write-Log -Type "WARN" -Object "PicketBox security module could not be found ($PicketBoxModulePath)"
+        Write-Log -Type "INFO" -Object "Registering $($Properties.DataSourceName) data-source without encryption"
+        $AddDataSource = Add-DataSource -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -DataSource $Properties.DataSourceName -Driver $Properties.DatabaseDriver -ConnectionURL $Properties.DatabaseURL -UserName $Properties.RPDBCredentials.UserName -Password $Properties.RPDBCredentials.GetNetworkCredential().Password -ConnectionChecker $ConnectionChecker -ExceptionSorter $ExceptionSorter
+        Assert-JBossClientOutcome -Log $AddDataSource -Object "$($Properties.DataSourceName) data-source" -Verb "register"
+      }
       # ------------------------------------------------------------------------
       # Setup grid property
       Write-Log -Type "INFO" -Object "Configure grid properties"
       $UserGridPath     = Set-GridProperties -Properties $Properties -Server $Server
-      $UserGridURI      = Resolve-URI -URI $UserGridPath
+      $UserGridURI      = Resolve-URI -URI $UserGridPath -RestrictedOnly
       $UserGridResource = "/system-property=user.grid.properties.file"
       # Check if grid configuration already exists
       if (Test-Resource -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Resource $UserGridResource) {
@@ -221,7 +281,7 @@ function Invoke-SetupJBoss {
       # Setup logs
       Write-Log -Type "INFO" -Object "Configure log properties"
       $LogPropertiesPath  = Set-LogProperties -Properties $Properties -Server $Server
-      $LogPropertiesURI   = Resolve-URI -URI $LogPropertiesPath
+      $LogPropertiesURI   = Resolve-URI -URI $LogPropertiesPath -RestrictedOnly
       # Check if log configuration already exists
       $CheckLogCmd = "/system-property=riskpro.log4j.properties.file:read-resource()"
       Write-Log -Type "DEBUG" -Object $CheckLogCmd
@@ -245,16 +305,17 @@ function Invoke-SetupJBoss {
       # --------------------------------------------------------------------------
       # Setup timeout
       # TODO -DgeneralTimeout
-    }
-    # --------------------------------------------------------------------------
-    # Reload web-server
-    Invoke-ReloadWildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials
-  }
-  End {
-    if ($Remove) {
-      Write-Log -Type "CHECK" -Object "$($Server.Hostname) web-server de-configuration complete"
-    } else {
-      Write-Log -Type "CHECK" -Object "$($Server.Hostname) web-server configuration complete"
+      # --------------------------------------------------------------------------
+      # Reload web-server
+      Invoke-ReloadWildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials
+      # --------------------------------------------------------------------------
+      # Check database connection
+      $DatabasePing = Test-DataSourceConnection -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -DataSource $Properties.DataSourceName
+      if (Test-JBossClientOutcome -Log $DatabasePing) {
+        Write-Log -Type "CHECK" -Object "$($Server.Hostname) web-server configuration complete"
+      } else {
+        Write-Log -Type "ERROR" -Object "Failed to connect to RiskPro database using data-source $($Properties.DataSourceName)" -ErrorCode 1
+      }
     }
   }
 }

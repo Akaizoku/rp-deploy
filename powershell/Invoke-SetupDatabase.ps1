@@ -19,7 +19,7 @@ function Invoke-SetupDatabase {
     File name:      Invoke-SetupDatabase.ps1
     Author:         Florian Carrier
     Creation date:  15/10/2019
-    Last modified:  16/12/2019
+    Last modified:  03/02/2020
   #>
   [CmdletBinding ()]
   Param (
@@ -51,16 +51,18 @@ function Invoke-SetupDatabase {
       # ------------------------------------------------------------------------
       Write-Log -Type "INFO" -Object "Delete database and user"
       # Check database connection
-      $Ping = Test-SQLConnection -Server $Properties.DatabaseServerInstance -Database $Properties.DatabaseName -Credentials $Properties.RPDBCredentials
+      $Ping = Test-DatabaseConnection -DatabaseVendor $Properties.DatabaseType -Hostname $Properties.DatabaseHost -PortNumber $Properties.DatabasePort -Instance $Properties.DatabaseInstance -Credentials $Properties.RPDBCredentials
       if ($Ping -eq $false) {
         Write-Log -Type "ERROR" -Object "Unable to reach database $($Properties.DatabaseName) on $($Properties.DatabaseHost)" -ExitCode 1
       }
       # Close open connections
       # TODO call scripts manually
       # $KillSessionScript = Join-Path $Properties.ResDirectory -ChildPath "sqlserver\killUserSession.sql"
+      Write-Log -Type "INFO" -Object "Close open database connexions"
       $KillSession = Invoke-RiskProANTClient -Path $Properties.RPBatchClient -XML $Properties.DatabaseXML -Operation "killUserSession" -Properties $JavaProperties
       Assert-RiskProANTOutcome -Log $KillSession -Object "User sessions" -Verb "close" -Plural
       # Drop database
+      Write-Log -Type "INFO" -Object "Drop RiskPro database and user"
       $DropDatabase = Invoke-RiskProANTClient -Path $Properties.RPBatchClient -XML $Properties.DatabaseXML -Operation "dropUser" -Properties $JavaProperties
       Assert-RiskProANTOutcome -Log $DropDatabase -Object "$($Properties.DatabaseName) database" -Verb "drop" -Irregular "dropped"
     } else {

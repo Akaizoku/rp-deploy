@@ -28,7 +28,7 @@
   File name:      Deploy-RiskPro.ps1
   Author:         Florian CARRIER
   Creation date:  27/11/2018
-  Last modified:  24/01/2020
+  Last modified:  06/02/2020
   Dependencies:   - PowerShell Tool Kit (PSTK)
                   - WildFly PowerShell Module (PSWF)
                   - RiskPro PowerShell Module (PSRP)
@@ -115,17 +115,17 @@ Begin {
   # ----------------------------------------------------------------------------
   # Global preferences
   # ----------------------------------------------------------------------------
+  # Set-StrictMode -Version Latest
   # $ErrorActionPreference = "Stop"
   $DebugPreference = "Continue"
-  # Set-StrictMode -Version Latest
 
   # ----------------------------------------------------------------------------
   # Global variables
   # ----------------------------------------------------------------------------
   # General
   $WorkingDirectory   = $PSScriptRoot
-  $ScriptName         = [System.IO.Path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Name)
-  $ISOTimeStamp       = Get-Date -Format "dd-MM-yyyy_HHmmss"
+  $ISOTimeStamp       = Get-Date -Format "yyyy-MM-dd_HHmmss"
+
   # Configuration
   $LibDirectory       = Join-Path -Path $WorkingDirectory -ChildPath "lib"
   $ConfDirectory      = Join-Path -Path $WorkingDirectory -ChildPath "conf"
@@ -258,7 +258,7 @@ Begin {
   $Properties.RPHomeDirectory     = Join-Path -Path $Properties.InstallationPath -ChildPath ("rp-" + $Properties.RiskProVersion)
 
   # RiskPro migrator tool
-  $Properties.MigratorDistribution = "migrator-distribution-" + $Properties.RiskProMigratorVersion + ".zip"
+    $Properties.MigratorDistribution = "migrator-distribution-" + $Properties.RiskProMigratorVersion + ".zip"
 
   # Resolve relative paths
   $Properties = Set-RelativePath -Path $Properties.RPRelativePaths        -Hashtable $Properties -Root $Properties.RPHomeDirectory
@@ -354,6 +354,7 @@ Process {
   switch ($Action) {
     "backup"    { Invoke-BackupSchema     -Properties ($Properties + $DatabaseProperties)                                           -Unattended:$Unattended                 }
     "clean-up"  { Clear-RiskPro           -Properties $Properties                                                                   -Unattended:$Unattended                 }
+    "configure" { Invoke-ConfigureRiskPro -Properties ($Properties + $DatabaseProperties) -WebServers $WebServers -Servers $Servers -Unattended:$Unattended -SkipDB:$SkipDB }
     "deploy"    { Invoke-DeployRiskPro    -Properties $Properties                         -WebServers $WebServers -Servers $Servers -Unattended:$Unattended                 }
     "install"   { Install-RiskPro         -Properties ($Properties + $DatabaseProperties) -WebServers $WebServers -Servers $Servers -Unattended:$Unattended -SkipDB:$SkipDB }
     "package"   { Invoke-GenerateWebApp   -Properties $Properties                                                                                                           }
@@ -368,6 +369,6 @@ Process {
 }
 # ------------------------------------------------------------------------------
 End {
-  # End script
+  # End script gracefully
   Stop-Script -ExitCode 0
 }

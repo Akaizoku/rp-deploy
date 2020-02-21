@@ -10,7 +10,7 @@ function Install-RiskPro {
     The properties parameter corresponds to the configuration of the application.
 
     .PARAMETER WebServers
-    The web-servers parameter corresponds to the configuration of the application servers.
+    The application servers parameter corresponds to the configuration of the application servers.
 
     .PARAMETER Servers
     The servers parameter corresponds to the configuration of the server grid.
@@ -18,11 +18,17 @@ function Install-RiskPro {
     .PARAMETER Unattended
     The unattended switch specifies if the script should run in non-interactive mode.
 
+    .INPUTS
+    None. You cannot pipe objects to Install-RiskPro.
+
+    .OUTPUTS
+    None. Install-RiskPro does not return any object.
+
     .NOTES
     File name:      Install-RiskPro.ps1
     Author:         Florian Carrier
     Creation date:  16/12/2019
-    Last modified:  03/02/2020
+    Last modified:  21/02/2020
   #>
   [CmdletBinding (
     SupportsShouldProcess = $true
@@ -66,6 +72,8 @@ function Install-RiskPro {
   Begin {
     # Get global preference variables
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
+    # Initialize license variable
+    $Global:License = $false
     # --------------------------------------------------------------------------
     # Repository structure
     # --------------------------------------------------------------------------
@@ -180,10 +188,14 @@ function Install-RiskPro {
     if ($Properties.CustomGridConfiguration -eq $true) {
       # TODO setup grid configuration from grid CSV files
     } else {
-      foreach ($Server in $Servers) {
-        # Get server properties
-        $WebServer = $WebServers[$Server.Hostname]
-        Invoke-GridSetup -Properties ($Properties + $WebServer) -Server $Server
+      if ($Properties.DatabaseType -eq "SQLServer") {
+        foreach ($Server in $Servers) {
+          # Get server properties
+          $WebServer = $WebServers[$Server.Hostname]
+          Invoke-GridSetup -Properties ($Properties + $WebServer) -Server $Server
+        }
+      } else {
+        Write-Log -Type "WARN" -Object "Skipping grid configuration"
       }
     }
     # --------------------------------------------------------------------------
@@ -191,30 +203,30 @@ function Install-RiskPro {
     # --------------------------------------------------------------------------
     # Loop through the grid
     foreach ($Server in $Servers) {
-      Write-Log -Type "INFO" -Object "Setup $($Server.Hostname) host"
+      Write-Log -Type "INFO" -Object "Setup $($Server.Hostname) application server"
       # Get server properties
       $WebServer = $WebServers[$Server.Hostname]
       # Encryption key
       $EncryptionKey = Get-Content -Path (Join-Path -Path $Properties.SecurityDirectory -ChildPath $Properties.EncryptionKey) -Encoding "UTF8"
       # WildFly administration account
       $AdminCredentials = Get-ScriptCredentials -UserName $WebServer.AdminUserName -Password $WebServer.AdminPassword -EncryptionKey $EncryptionKey -Label "$($WebServer.WebServerType) administration user" -Unattended:$Unattended
-      # Check web-server status
-      Write-Log -Type "DEBUG" -Object "Check web-server status"
+      # Check application server status
+      Write-Log -Type "DEBUG" -Object "Check application server status"
       $Controller = $WebServer.Hostname + ':' + $WebServer.AdminPort
       $Running = Resolve-ServerState -Path $Properties.JBossClient -Controller $Controller -HTTPS:$Properties.EnableHTTPS
       if ($Running -eq $false) {
         Write-Log -Type "WARN" -Object "Web-Server $($Server.Hostname) is not running"
         if ($Attended) {
-          $Confirm = Confirm-Prompt -Prompt "Do you want to start the web-server?"
+          $Confirm = Confirm-Prompt -Prompt "Do you want to start the application server?"
         }
         if ($Unattended -Or $Confirm) {
-          # Start web-server
+          # Start application server
           Start-WebServer -Properties ($Properties + $WebServer)
           # Wait for server to run
           Wait-WildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $AdminCredentials -TimeOut 300 -RetryInterval 1
         }
       }
-      # Configure web-server
+      # Configure application server
       Invoke-SetupJBoss -Properties ($Properties + $WebServer) -Server $Server -Credentials $AdminCredentials
     }
     # --------------------------------------------------------------------------
@@ -229,26 +241,30 @@ function Install-RiskPro {
     # --------------------------------------------------------------------------
     # Setup system model
     # --------------------------------------------------------------------------
-    # Create user group
-    Write-Log -Type "INFO" -Object "Creating administration user group"
-    $CreateUserGroup = Invoke-CreateUserGroup -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -GroupName "Administrators"
-    Assert-RiskProBatchClientOutcome -Log $CreateUserGroup -Object "Administrators user group" -Verb "create"
-    # Add administration user to administration user group
-    Write-Log -Type "INFO" -Object "Adding admin user to administration user group"
-    $ModifyUser = Invoke-ModifyUser -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -UserName $RiskProAdminCredentials.UserName -NewUserName $RiskProAdminCredentials.UserName -NewEmployeeName "Administrator" -UserGroups "Administrators"
-    Assert-RiskProBatchClientOutcome -Log $ModifyUser -Object "Administrator user" -Verb "add"
-    # Create system model group
-    Write-Log -Type "INFO" -Object "Creating model group ""$($Properties.SystemModelGroup)"""
-    $CreateModelGroup = Invoke-CreateModelGroup -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -ModelGroup $Properties.SystemModelGroup
-    Assert-RiskProBatchClientOutcome -Log $CreateModelGroup -Object """$($Properties.SystemModelGroup)"" model group" -Verb "create"
-    # Grant permissions on system model group to administration user group
-    Write-Log -Type "INFO" -Object "Granting permissions to administration user group"
-    $GrantRole = Grant-Role -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -ModelGroupName $Properties.SystemModelGroup -RoleName "Administrator" -UserGroupName "Administrators"
-    Assert-RiskProBatchClientOutcome -Log $GrantRole -Object "Administrator role" -Verb "grant"
-    # Create blank system model
-    Write-Log -Type "INFO" -Object "Creating $($Properties.SystemModelName) model"
-    $CreateModel = Invoke-CreateModel -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -ModelName $Properties.SystemModelName -Type $Properties.SystemModelType -Description $Properties.SystemModelDescription -Currency $Properties.SystemModelCurrency -ModelGroupName $Properties.SystemModelGroup
-    Assert-RiskProBatchClientOutcome -Log $CreateModel -Object """$($Properties.SystemModelName)"" model" -Verb "create"
+    if ($Global:License -eq $true) {
+      # Create user group
+      Write-Log -Type "INFO" -Object "Creating administration user group"
+      $CreateUserGroup = Invoke-CreateUserGroup -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -GroupName $Properties.AdminUserGroup
+      Assert-RiskProBatchClientOutcome -Log $CreateUserGroup -Object """$($Properties.AdminUserGroup)"" user group" -Verb "create"
+      # Add administration user to administration user group
+      Write-Log -Type "INFO" -Object "Adding admin user to administration user group"
+      $ModifyUser = Invoke-ModifyUser -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -UserName $RiskProAdminCredentials.UserName -NewUserName $RiskProAdminCredentials.UserName -NewEmployeeName "Administrator" -UserGroups $Properties.AdminUserGroup
+      Assert-RiskProBatchClientOutcome -Log $ModifyUser -Object "Administrator user" -Verb "add"
+      # Create system model group
+      Write-Log -Type "INFO" -Object "Creating model group ""$($Properties.SystemModelGroup)"""
+      $CreateModelGroup = Invoke-CreateModelGroup -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -ModelGroup $Properties.SystemModelGroup
+      Assert-RiskProBatchClientOutcome -Log $CreateModelGroup -Object """$($Properties.SystemModelGroup)"" model group" -Verb "create"
+      # Grant permissions on system model group to administration user group
+      Write-Log -Type "INFO" -Object "Granting permissions to administration user group"
+      $GrantRole = Grant-Role -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -ModelGroupName $Properties.SystemModelGroup -RoleName "Administrator" -UserGroupName "Administrators"
+      Assert-RiskProBatchClientOutcome -Log $GrantRole -Object "Administrator role" -Verb "grant"
+      # Create blank system model
+      Write-Log -Type "INFO" -Object "Creating $($Properties.SystemModelName) model"
+      $CreateModel = Invoke-CreateModel -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -ModelName $Properties.SystemModelName -Type $Properties.SystemModelType -Description $Properties.SystemModelDescription -Currency $Properties.SystemModelCurrency -ModelGroupName $Properties.SystemModelGroup
+      Assert-RiskProBatchClientOutcome -Log $CreateModel -Object """$($Properties.SystemModelName)"" model" -Verb "create"
+    } else {
+      Write-Log -Type "WARN" -Object "Please activate the product license"
+    }
     # --------------------------------------------------------------------------
     Write-Log -Type "CHECK" -Object "RiskPro $($Properties.RiskProVersion) has been successfully installed"
   }

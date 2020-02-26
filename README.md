@@ -79,14 +79,21 @@ DatabaseName          = RiskPro
 DatabaseSchema        = dbo
 DatabaseCollation     = Latin1_General_BIN
 DatabaseUsername      = RiskPro
-DatabaseUserPassword  = welcome
+DatabaseUserPassword  = *******
 DatabaseAdminUsername = sa
-DatabaseAdminPassword = system
+DatabaseAdminPassword = *******
 ```
 
 ### Grid configuration
 
 The configuration of the grid is done using the `grid.csv` configuration file.
+
+Below is an example for a single-server installation:
+
+```csv
+Hostname,Calculator,Job Controller,Staging Area,TESS
+riskpro,TRUE,TRUE,TRUE,TRUE
+```
 
 ### Server configuration
 
@@ -106,9 +113,11 @@ The `server.ini` file contains the configuration for each server of the grid. It
 Below is an example of the configuration for the application server:
 
 ```ini
-# Web-application main host and TESS
-[apphost]
+# Application main host
+[riskpro]
+AdminPassword         = *******
 AdminPort             = 9990
+AdminUserName         = admin
 AppServerProtocol     = HTTP
 Hostname              = 127.0.0.1
 HTTPPort              = 8080
@@ -148,3 +157,11 @@ The workaround is to extract the files manually and recreate a new compressed fi
 If deploying RiskPro on a grid, i.e. multiple application server, the script will be unable to install the MSSQL JDBC module on remote servers (see [JBoss Developper thread #243037](https://developer.jboss.org/thread/243037)).
 
 To resolve this issue, please install the JDBC module on all remote servers.
+
+### Failed to delete %JBOSS_HOME%\modules\oracle\jdbc\main\ojdbc7.jar
+
+> Failed to delete %JBOSS_HOME%\modules\oracle\jdbc\main\ojdbc7.jar
+
+The removal of the JDBC driver failed.
+
+The workaround is to manually remove the Java application resource (JAR) file from the specified location.

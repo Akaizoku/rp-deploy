@@ -172,6 +172,7 @@ function Install-RiskPro {
         }
       }
     } else {
+      Write-Log -Type "INFO" -Object "Configuring $($Properties.RiskProHomeVariable) environment variable"
       Set-EnvironmentVariable -Name $Properties.RiskProHomeVariable -Value $Properties.RPHomeDirectory -Scope $Properties.EnvironmentVariableScope
       Write-Log -Type "CHECK" -Object "$($Properties.RiskProHomeVariable) environment variable has been set"
     }

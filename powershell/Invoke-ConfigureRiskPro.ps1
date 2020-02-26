@@ -22,7 +22,7 @@ function Invoke-ConfigureRiskPro {
     File name:      Invoke-ConfigureRiskPro.ps1
     Author:         Florian Carrier
     Creation date:  06/02/2020
-    Last modified:  06/02/2020
+    Last modified:  26/02/2020
   #>
   [CmdletBinding (
     SupportsShouldProcess = $true
@@ -119,18 +119,13 @@ function Invoke-ConfigureRiskPro {
     if (-Not $SkipDB) {
       if ($Properties.CustomGridConfiguration -eq $true) {
         # TODO setup grid configuration from grid CSV files
-        Write-Log -Type "ERROR" -Object "Custom grid configuration is not yet supported"
-        Write-Log -Type "WARN"  -Object "Skipping database configuration"
-      } else {
-        if ($Properties.DatabaseType -eq "SQLServer") {
-          foreach ($Server in $Servers) {
-            # Get server properties
-            $WebServer = $WebServers[$Server.Hostname]
-            Invoke-GridSetup -Properties ($Properties + $WebServer) -Server $Server
-          }
-        } else {
-          Write-Log -Type "WARN" -Object "Skipping grid configuration"
-        }
+        Write-Log -Type "ERROR" -Object "Custom grid configuration not supported yet"
+        Write-Log -Type "WARN"  -Object "Defaulting to standard grid configuration"
+      }
+      foreach ($Server in $Servers) {
+        # Get server properties
+        $WebServer = $WebServers[$Server.Hostname]
+        Invoke-GridSetup -Properties ($Properties + $WebServer) -Server $Server
       }
     } else {
       Write-Log -Type "WARN" -Object "Skipping database configuration"
@@ -138,34 +133,34 @@ function Invoke-ConfigureRiskPro {
     # --------------------------------------------------------------------------
     # Configure Java application server(s)
     # --------------------------------------------------------------------------
-    # # Loop through the grid
-    # foreach ($Server in $Servers) {
-    #   Write-Log -Type "INFO" -Object "Configuring $($Server.Hostname) application server"
-    #   # Get server properties
-    #   $WebServer = $WebServers[$Server.Hostname]
-    #   # Encryption key
-    #   $EncryptionKey = Get-Content -Path (Join-Path -Path $Properties.SecurityDirectory -ChildPath $Properties.EncryptionKey) -Encoding "UTF8"
-    #   # WildFly administration account
-    #   $AdminCredentials = Get-ScriptCredentials -UserName $WebServer.AdminUserName -Password $WebServer.AdminPassword -EncryptionKey $EncryptionKey -Label "$($WebServer.WebServerType) administration user" -Unattended:$Unattended
-    #   # Check web-server status
-    #   Write-Log -Type "DEBUG" -Object "Check application server status"
-    #   $Controller = $WebServer.Hostname + ':' + $WebServer.AdminPort
-    #   $Running = Resolve-ServerState -Path $Properties.JBossClient -Controller $Controller -HTTPS:$Properties.EnableHTTPS
-    #   if ($Running -eq $false) {
-    #     Write-Log -Type "WARN" -Object "Application server $($Server.Hostname) is not running"
-    #     if ($Attended) {
-    #       $Confirm = Confirm-Prompt -Prompt "Do you want to start the application server?"
-    #     }
-    #     if ($Unattended -Or $Confirm) {
-    #       # Start web-server
-    #       Start-WebServer -Properties ($Properties + $WebServer)
-    #       # Wait for server to run
-    #       Wait-WildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $AdminCredentials -TimeOut 300 -RetryInterval 1
-    #     }
-    #   }
-    #   # Configure web-server
-    #   Invoke-SetupJBoss -Properties ($Properties + $WebServer) -Server $Server -Credentials $AdminCredentials
-    # }
+    # Loop through the grid
+    foreach ($Server in $Servers) {
+      Write-Log -Type "INFO" -Object "Configuring $($Server.Hostname) application server"
+      # Get server properties
+      $WebServer = $WebServers[$Server.Hostname]
+      # Encryption key
+      $EncryptionKey = Get-Content -Path (Join-Path -Path $Properties.SecurityDirectory -ChildPath $Properties.EncryptionKey) -Encoding "UTF8"
+      # WildFly administration account
+      $AdminCredentials = Get-ScriptCredentials -UserName $WebServer.AdminUserName -Password $WebServer.AdminPassword -EncryptionKey $EncryptionKey -Label "$($WebServer.WebServerType) administration user" -Unattended:$Unattended
+      # Check web-server status
+      Write-Log -Type "DEBUG" -Object "Check application server status"
+      $Controller = $WebServer.Hostname + ':' + $WebServer.AdminPort
+      $Running = Resolve-ServerState -Path $Properties.JBossClient -Controller $Controller -HTTPS:$Properties.EnableHTTPS
+      if ($Running -eq $false) {
+        Write-Log -Type "WARN" -Object "Application server $($Server.Hostname) is not running"
+        if ($Attended) {
+          $Confirm = Confirm-Prompt -Prompt "Do you want to start the application server?"
+        }
+        if ($Unattended -Or $Confirm) {
+          # Start web-server
+          Start-WebServer -Properties ($Properties + $WebServer)
+          # Wait for server to run
+          Wait-WildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $AdminCredentials -TimeOut 300 -RetryInterval 1
+        }
+      }
+      # Configure web-server
+      Invoke-SetupJBoss -Properties ($Properties + $WebServer) -Server $Server -Credentials $AdminCredentials
+    }
     # --------------------------------------------------------------------------
     Write-Log -Type "CHECK" -Object "Configuration successfully set for RiskPro $($Properties.RiskProVersion)"
   }

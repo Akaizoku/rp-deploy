@@ -1,4 +1,20 @@
 function Get-ScriptCredentials {
+  <#
+    .SYNOPSIS
+    Get script credentials
+
+    .DESCRIPTION
+    Retrieve or prompt user for credentials
+
+    .NOTES
+    File name:      Get-ScriptCredentials.ps1
+    Author:         Florian CARRIER
+    Creation date:  16/12/2019
+    Last modified:  17/02/2020
+  #>
+  [CmdletBinding (
+    SupportsShouldProcess = $true
+  )]
   Param (
     [Parameter (
       Position    = 1,

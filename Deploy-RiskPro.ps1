@@ -115,9 +115,10 @@ Begin {
   # ----------------------------------------------------------------------------
   # Global preferences
   # ----------------------------------------------------------------------------
+  # WARNING Do not enable strict mode to prevent
   # Set-StrictMode -Version Latest
-  # $ErrorActionPreference = "Stop"
-  $DebugPreference = "Continue"
+  # $ErrorActionPreference  = "Stop"
+  $DebugPreference        = "Continue"
 
   # ----------------------------------------------------------------------------
   # Global variables
@@ -258,7 +259,7 @@ Begin {
   $Properties.RPHomeDirectory     = Join-Path -Path $Properties.InstallationPath -ChildPath ("rp-" + $Properties.RiskProVersion)
 
   # RiskPro migrator tool
-    $Properties.MigratorDistribution = "migrator-distribution-" + $Properties.RiskProMigratorVersion + ".zip"
+  $Properties.MigratorDistribution = "migrator-distribution-" + $Properties.RiskProMigratorVersion + ".zip"
 
   # Resolve relative paths
   $Properties = Set-RelativePath -Path $Properties.RPRelativePaths        -Hashtable $Properties -Root $Properties.RPHomeDirectory
@@ -319,7 +320,7 @@ Begin {
   $CustomPaths = Resolve-Array -Array $Properties.CustomPaths -Delimiter ","
   foreach ($CustomPath in $CustomPaths) {
     # Check that path has not been specified by user
-    if (-Not ($CustomCheck.$CustomPath)) {
+    if ($CustomCheck.$CustomPath -eq $null) {
       # Resolve absolute path
       $Properties.$CustomPath = Join-Path -Path $Properties.InstallationPath -ChildPath $Properties.$CustomPath
     }

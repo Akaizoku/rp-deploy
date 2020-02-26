@@ -12,7 +12,7 @@ function Test-DatabaseConnection {
     .PARAMETER PortNumber
     The port number parameter corresponds to the port number of the database server.
 
-    .PARAMETER Service
+    .PARAMETER Instance
     The instance parameter corresponds to the name of the database instance or service.
 
     .PARAMETER DatabaseVendor
@@ -40,13 +40,13 @@ function Test-DatabaseConnection {
     File name:      Test-DatabaseConnection.ps1
     Author:         Florian Carrier
     Creation date:  03/02/2020
-    Last modified:  03/02/2020
+    Last modified:  20/02/2020
 
     .LINK
     Test-SQLConnection
 
     .LINK
-    Test-ORAConnection
+    Test-OracleConnection
 
   #>
   [CmdletBinding (
@@ -144,11 +144,11 @@ function Test-DatabaseConnection {
     switch ($DatabaseVendor) {
       "Oracle" {
         if ($PSBoundParameters.ContainsKey("Credentials")) {
-          Test-ORAConnection -Hostname $Hostname -PortNumber $PortNumber -Service $Instance -Credentials $Credentials -TimeOut $TimeOut
+          Test-OracleConnection -Hostname $Hostname -PortNumber $PortNumber -Service $Instance -Credentials $Credentials -TimeOut $TimeOut
         } elseif ($PSBoundParameters.ContainsKey("Username") -And $PSBoundParameters.ContainsKey("Password")) {
-          Test-ORAConnection -Hostname $Hostname -PortNumber $PortNumber -Service $Instance -Username $Username -Password $Password -TimeOut $TimeOut
+          Test-OracleConnection -Hostname $Hostname -PortNumber $PortNumber -Service $Instance -Username $Username -Password $Password -TimeOut $TimeOut
         } else {
-          Test-ORAConnection -Hostname $Hostname -PortNumber $PortNumber -Service $Instance -TimeOut $TimeOut
+          Test-OracleConnection -Hostname $Hostname -PortNumber $PortNumber -Service $Instance -TimeOut $TimeOut
         }
       }
       "SQLServer" {

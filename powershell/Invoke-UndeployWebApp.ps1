@@ -80,7 +80,7 @@ function Invoke-UndeployWebApp {
       "WildFly" {
         $UndeployApplication = Invoke-UndeployApplication -Path $Properties.JBossClient -Controller $Controller -Application $WARFile -Credentials $Credentials
         # Check outcome
-        if (Select-String -InputObject $UndeployApplication -Pattern "Undeploy failed" -SimpleMatch -Quiet) {
+        if (Select-String -InputObject $UndeployApplication -Pattern "WFLYCTL0062: Composite operation failed" -SimpleMatch -Quiet) {
           # If [WFLYCTL0216: Resource not found]
           if (Select-String -InputObject $UndeployApplication -Pattern '("WFLYCTL0216:)(.|\n)*(not found")' -Quiet) {
             Write-Log -Type "WARN" -Object "$WARFile is not deployed on host $Hostname"

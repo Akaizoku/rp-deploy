@@ -22,7 +22,7 @@ function Update-RiskPro {
     File name:      Update-RiskPro.ps1
     Author:         Florian Carrier
     Creation date:  25/11/2019
-    Last modified:  22/01/2020
+    Last modified:  05/02/2020
   #>
   [CmdletBinding (
     SupportsShouldProcess = $true
@@ -99,6 +99,7 @@ function Update-RiskPro {
       Write-Log -Type "ERROR" -Object "An error occured when extracting the files." -ExitCode 1
     }
     # Set environment variable
+    # TODO only set environment variable if migration is successful to prevent issue upon unmanaged failure
     Write-Log -Type "INFO" -Object "Setting-up $($Properties.RiskProHomeVariable) environment variable"
     if (Test-EnvironmentVariable -Name $Properties.RiskProHomeVariable -Scope $Properties.EnvironmentVariableScope) {
       $OldRiskProHome = Get-EnvironmentVariable -Name $Properties.RiskProHomeVariable -Scope $Properties.EnvironmentVariableScope
@@ -118,8 +119,7 @@ function Update-RiskPro {
     # --------------------------------------------------------------------------
     # Unpack migrator
     # --------------------------------------------------------------------------
-    $MigratorDistribution = $Properties.RiskProMigratorPrefix + $Properties.RiskProMigratorVersion + $Properties.RiskProMigratorSuffix
-    $MigratorSource       = Join-Path -Path $Properties.SrcDirectory    -ChildPath $MigratorDistribution
+    $MigratorSource       = Join-Path -Path $Properties.SrcDirectory    -ChildPath $Properties.MigratorDistribution
     $MigratorDestination  = Join-Path -Path $Properties.RPHomeDirectory -ChildPath "etc/migrator"
     # Check source files
     if (Test-Path -Path $MigratorSource) {

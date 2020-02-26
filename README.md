@@ -128,10 +128,23 @@ ConvertFrom-SecureString -SecureString (ConvertTo-SecureString -String "<passwor
 
 ## Known issues
 
-### RPD-1
+### The archive file distribution-x.x.x-dist.zip is empty.
 
 > The archive file distribution-x.x.x-dist.zip is empty.
 
 The distribution files of OneSumX for Risk Management version 9.9.0 and 9.10.0 were compressed in a way that prevents the [Expand-Archive](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.archive/expand-archive) PowerShell function to read the archive file (see [SalesForce ticket #00547102](https://wkfs.force.com/WKSupportPortal/5001T00001HZGFh)).
 
 The workaround is to extract the files manually and recreate a new compressed file using Windows built-in compress utility or a third-party tool such as [WinRAR](https://www.win-rar.com/) or [7-Zip](https://www.7-zip.org/). This implies disabling the integrity check as the new distribution file will not have the same signature.
+
+### WFLYJCA0041: Failed to load module for driver \[mssql.jdbc\]
+
+> {
+>    "outcome" => "failed",
+>    "failure-description" => "WFLYJCA0041: Failed to load module for driver \[mssql.jdbc\]",
+>    "rolled-back" => true,
+>    "response-headers" => {"process-state" => "reload-required"}
+> }
+
+If deploying RiskPro on a grid, i.e. multiple application server, the script will be unable to install the MSSQL JDBC module on remote servers (see [JBoss Developper thread #243037](https://developer.jboss.org/thread/243037)).
+
+To resolve this issue, please install the JDBC module on all remote servers.

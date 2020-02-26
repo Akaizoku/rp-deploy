@@ -93,8 +93,8 @@ function Get-ConnectionString {
             }
           }
           "Oracle" {
+            # WARNING use EZ syntax to prevent parsing issues with JBoss batch client
             if ($Instance) {
-              # TODO check syntax and add database name
               $ConnectionString =
               "jdbc:oracle:thin:@//$($Hostname):$PortNumber/$Instance"
             } else {

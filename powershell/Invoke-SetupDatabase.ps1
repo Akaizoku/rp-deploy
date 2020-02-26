@@ -51,7 +51,7 @@ function Invoke-SetupDatabase {
       # ------------------------------------------------------------------------
       Write-Log -Type "INFO" -Object "Delete database and user"
       # Check database connection
-      $Ping = Test-DatabaseConnection -DatabaseVendor $Properties.DatabaseType -Hostname $Properties.DatabaseHost -PortNumber $Properties.DatabasePort -Instance $Properties.DatabaseInstance -Credentials $Properties.RPDBCredentials
+      $Ping = Test-DatabaseConnection -DatabaseVendor $Properties.DatabaseType -Hostname $Properties.DatabaseHost -PortNumber $Properties.DatabasePort -Instance $Properties.DatabaseInstance -Credentials $Properties.DBACredentials
       if ($Ping -eq $false) {
         Write-Log -Type "ERROR" -Object "Unable to reach database $($Properties.DatabaseName) on $($Properties.DatabaseHost)" -ExitCode 1
       }
@@ -84,7 +84,7 @@ function Invoke-SetupDatabase {
         $SQLArguments.Database = "master"
         # Execute query
         Write-Log -Type "DEBUG" -Object $Query -Obfuscate $Properties.DBACredentials.GetNetworkCredential().Password
-        Invoke-SqlCmd @SQLArguments -Query $Query
+        Invoke-SQLCommand @SQLArguments -Query $Query
         # Abort script on first error
         if (-Not $?) {
           Write-Log -Type "ERROR" -Object "An error occurred during the database creation" -ExitCode 1
@@ -103,9 +103,11 @@ function Invoke-SetupDatabase {
       $LoadSchema = Invoke-RiskProANTClient -Path $Properties.RPBatchClient -XML $Properties.DatabaseXML -Operation "loadSchema" -Properties $JavaProperties
       Assert-RiskProANTOutcome -Log $LoadSchema -Object "Database schema" -Verb "load"
       # ------------------------------------------------------------------------
+      # Configure database partitioning
       if ($Properties.EnablePartitioning -eq $true) {
-        if (($Properties.DatabaseType -eq "SQLServer") -And ($Properties.RiskProVersion -NotMatch '9.*')) {
-          Write-Log -Type "WARN" -Object "Database partitioning is not available for SQL Server in RiskPro version $($Properties.RiskProVersion)"
+        # WARNING Database partitioning for SQL Server is only available starting from version 9
+        if (($Properties.DatabaseType -eq "SQLServer") -And (Compare-Version -Version $Properties.RiskProVersion -Operator "lt" -Reference "9.0.0" -Format "semantic")) {
+          Write-Log -Type "WARN" -Object "Database partitioning is not available for MS SQL Server in RiskPro version $($Properties.RiskProVersion)"
         } else {
           Write-Log -Type "INFO" -Object "Enabling database partitioning"
           $SetupPartitioning = Invoke-RiskProANTClient -Path $Properties.RPBatchClient -XML $Properties.DatabaseXML -Operation "enablePartitioning" -Properties $JavaProperties

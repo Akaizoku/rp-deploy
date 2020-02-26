@@ -28,7 +28,7 @@ function Install-RiskPro {
     File name:      Install-RiskPro.ps1
     Author:         Florian Carrier
     Creation date:  16/12/2019
-    Last modified:  21/02/2020
+    Last modified:  26/02/2020
   #>
   [CmdletBinding (
     SupportsShouldProcess = $true
@@ -187,16 +187,13 @@ function Install-RiskPro {
     # Configure grid
     if ($Properties.CustomGridConfiguration -eq $true) {
       # TODO setup grid configuration from grid CSV files
-    } else {
-      if ($Properties.DatabaseType -eq "SQLServer") {
-        foreach ($Server in $Servers) {
-          # Get server properties
-          $WebServer = $WebServers[$Server.Hostname]
-          Invoke-GridSetup -Properties ($Properties + $WebServer) -Server $Server
-        }
-      } else {
-        Write-Log -Type "WARN" -Object "Skipping grid configuration"
-      }
+      Write-Log -Type "ERROR" -Object "Custom grid configuration not supported yet"
+      Write-Log -Type "WARN"  -Object "Defaulting to standard grid configuration"
+    }
+    foreach ($Server in $Servers) {
+      # Get server properties
+      $WebServer = $WebServers[$Server.Hostname]
+      Invoke-GridSetup -Properties ($Properties + $WebServer) -Server $Server
     }
     # --------------------------------------------------------------------------
     # Setup servers

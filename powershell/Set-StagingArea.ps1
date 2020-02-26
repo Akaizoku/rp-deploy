@@ -1,8 +1,20 @@
-# ------------------------------------------------------------------------------
-# Setup staging area configuration
-# ------------------------------------------------------------------------------
 function Set-StagingArea {
-  [CmdletBinding ()]
+  <#
+    .SYNOPSIS
+    Setup staging area
+
+    .DESCRIPTION
+    Configure staging area service description table
+
+    .NOTES
+    File name:      Set-StagingArea.ps1
+    Author:         Florian CARRIER
+    Creation date:  15/10/2019
+    Last modified:  26/02/2020
+  #>
+  [CmdletBinding (
+    SupportsShouldProcess = $true
+  )]
   Param (
     [Parameter (
       Position    = 1,
@@ -23,43 +35,39 @@ function Set-StagingArea {
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
     # SQL commands arguments
     $SQLArguments = Set-SQLArguments -Properties $Properties -Credentials $Properties.RPDBCredentials
+    # Database table name
+    $Table = "SLV_STAGING_AREA_DESC"
     # Initialise configuration counter
     $ID = 1
   }
   Process {
-    Write-Log -Type "INFO" -Object "Configure staging area"
+    Write-Log -Type "INFO" -Object "Configuring staging area"
+    # --------------------------------------------------------------------------
     # Custom grid configuration
+    # --------------------------------------------------------------------------
     if ($PSBoundParameters.ContainsKey["Custom"]) {
-      # Cache SQL query
-      $SQLQuery = Get-Content -Path $Properties.SQLStagingAreaConfiguration -Raw
-      # Set variables
-      foreach ($Configuration in $Properties.StagingArea.GetEnumerator()) {
-        Write-Log -Type "DEBUG" -Object $Configuration.Name
-        $Variables = $Configuration.Value
-        # Add configuration ID and hostname parameters
-        $Variables.Add("SLV_STAGING_AREA_DESC_ID", $ID)
-        # Resolve NULL values
-        $Variables = Resolve-SQLVariable -Variables $Variables
-        # Update query parameters
-        $Query = Set-Tags -String $SQLQuery -Tags (Resolve-Tags -Tags $Variables -Prefix '#{' -Suffix '}')
-        # Execute statement
-        Write-Log -Type "DEBUG" -Object $Query
-        Invoke-SqlCmd @SQLArguments -Query $Query
-        # Increment configuration counter
-        $ID += 1
-      }
-    } else { # Standard configuration
-      # Define fields to update
-      $StagingAreaFields = [Ordered]@{
-        "SLV_STAGING_AREA_DESC_ID"        = $ID
-        "HOSTNAME"                        = '''' + $Properties.Hostname + ''''
-        "PERSISTNT_RES_MGR_THREAD_COUNT"  = $Properties.ResultThreadCount
-        "VERSION_KEY"                     = -1
-      }
-      # Define & execute query
-      $SQLQuery = Write-InsertOrUpdate -Table "SLV_STAGING_AREA_DESC" -Fields $StagingAreaFields -PrimaryKey "SLV_STAGING_AREA_DESC_ID" -Identity
-      Invoke-SqlCmd @SQLArguments -Query $SQLQuery
+      Write-Log -Type "ERROR" -Object "Custom grid configuration not supported yet"
+      Write-Log -Type "WARN"  -Object "Defaulting to standard grid configuration"
     }
+    # --------------------------------------------------------------------------
+    # Standard configuration
+    # --------------------------------------------------------------------------
+    # Define fully qualified table name
+    if ($Properties.DatabaseType -eq "Oracle") {
+      $FullyQualifiedTableName = [System.String]::Concat($Properties.DatabaseName, ".", $Table)
+    } elseif ($Properties.DatabaseType -eq "SQLServer") {
+      $FullyQualifiedTableName = [System.String]::Concat($Properties.DatabaseName, ".dbo.", $Table)
+    }
+    # Define fields to update
+    $StagingAreaFields = [Ordered]@{
+      "SLV_STAGING_AREA_DESC_ID"        = $ID
+      "HOSTNAME"                        = '''' + $Properties.Hostname + ''''
+      "PERSISTNT_RES_MGR_THREAD_COUNT"  = $Properties.ResultThreadCount
+      "VERSION_KEY"                     = -1
+    }
+    # Define & execute query
+    $SQLQuery = Write-InsertOrUpdate -Table $FullyQualifiedTableName -Fields $StagingAreaFields -PrimaryKey "SLV_STAGING_AREA_DESC_ID" -Vendor $Properties.DatabaseType -Identity
+    Invoke-SQLCommand @SQLArguments -Query $SQLQuery
     Write-Log -Type "CHECK" -Object "Staging area configuration complete"
   }
 }

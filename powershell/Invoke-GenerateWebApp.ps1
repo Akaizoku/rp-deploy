@@ -1,8 +1,20 @@
-# ------------------------------------------------------------------------------
-# Generate web-application
-# ------------------------------------------------------------------------------
 function Invoke-GenerateWebApp {
-  [CmdletBinding ()]
+  <#
+    .SYNOPSIS
+    Generate web-application
+
+    .DESCRIPTION
+    Generate RiskPro application WAR file
+
+    .NOTES
+    File name:      Invoke-GenerateWebApp.ps1
+    Author:         Florian CARRIER
+    Creation date:  15/10/2019
+    Last modified:  06/02/2020
+  #>
+  [CmdletBinding (
+    SupportsShouldProcess = $true
+  )]
   Param (
     [Parameter (
       Position    = 1,
@@ -36,7 +48,7 @@ function Invoke-GenerateWebApp {
     # Setup patches
     Publish-Patch -Path $Properties.PatchDirectory -JARTarget $Properties.RPJARPatchDirectory -ZipTarget $Properties.RPZIPPatchDirectory
     # Generate web-application
-    Write-Log -Type "INFO" -Object "Generate $($Properties.RPWebApplication) web-application"
+    Write-Log -Type "INFO" -Object "Generate $($Properties.RPWebApplication) application"
     $JavaProperties = Get-JavaProperties -Properties $Properties -Type "WebApp"
     $Log = Invoke-RiskProANTClient -Path $Properties.RPBatchClient -XML $Properties.RunXMLFile -Operation "generateDefaultWebApp" -Properties $JavaProperties
     Assert-RiskProANTOutcome -Log $Log -Object "$($Properties.RPWebApplication) WAR file" -Verb "generate"

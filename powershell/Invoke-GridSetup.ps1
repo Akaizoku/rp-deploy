@@ -1,8 +1,20 @@
-# ------------------------------------------------------------------------------
-# Setup grid database configuration
-# ------------------------------------------------------------------------------
 function Invoke-GridSetup {
-  [CmdletBinding ()]
+  <#
+    .SYNOPSIS
+    Setup RiskPro grid
+
+    .DESCRIPTION
+    Set RiskPro grid database configuration
+
+    .NOTES
+    File name:      Invoke-GridSetup.ps1
+    Author:         Florian CARRIER
+    Creation date:  15/10/2019
+    Last modified:  26/02/2020
+  #>
+  [CmdletBinding (
+    SupportsShouldProcess = $true
+  )]
   Param (
     [Parameter (
       Position    = 1,
@@ -24,8 +36,6 @@ function Invoke-GridSetup {
   Begin {
     # Get global preference variables
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
-    # SQL commands arguments
-    $SQLArguments = Set-SQLArguments -Properties $Properties
   }
   Process {
     # --------------------------------------------------------------------------

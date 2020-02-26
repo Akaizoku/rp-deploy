@@ -4,28 +4,42 @@ function Set-SQLArguments {
     Define arguments for SQL commands
 
     .DESCRIPTION
-    Generate set of arguments for the call to SQL commands using Invoke-SqlCmd
+    Generate set of arguments for the call to SQL commands using Invoke-SqlCmd (or Invoke-OracleCmd)
 
     .PARAMETER Properties
-    The properties parameter corresponds to the database properties. It must contains the following attributes:
+    The properties parameter corresponds to the database connection properties.
+
+    It must contains the following attributes for Microsoft SQL Server databases:
     - DatabaseServerInstance: Name of the database server and instance
-    - DatabaseName: Name of the database
-    - AbortOnError: Switch to abort command upon error
-    - ConnectionTimeOut: Time in seconds before connection timeout
-    - EncryptConnection: Switch to encrypt the connection
-    - IncludeSqlUserErrors: Switch to include SQL error messages
-    - OutputSqlErrors: Switch to output SQL error messages
-    - QueryTimeOut: Time in seconds before query timeout
+    - DatabaseName:           Name of the database
+
+    It must contains the following attributes for Oracle databases:
+    - DatabaseHost:           Name of the database host
+    - DatabasePort:           Port number of the database server
+    - DatabaseInstance:       Name of the database service
+
+    Optional attributes:
+    - AbortOnError:           Switch to abort command upon error
+    - ConnectionTimeOut:      Time in seconds before connection timeout
+    - EncryptConnection:      Switch to encrypt the connection
+    - IncludeSqlUserErrors:   Switch to include SQL error messages
+    - OutputSqlErrors:        Switch to output SQL error messages
+    - QueryTimeOut:           Time in seconds before query timeout
 
     .PARAMETER Credentials
-    The credentials parameter corresponds to the credentials of the database user to be used.
+    The credentials parameter corresponds to the credentials of the database user.
 
     .NOTES
     File name:      Set-SQLArguments.ps1
     Author:         Florian CARRIER
     Creation date:  15/11/2019
-    Last modified:  20/10/2019
-    Dependencies:   SQL Server PowerShell Module (SQLServer or SQLPS)
+    Last modified:  26/02/2020
+
+    .LINK
+    Invoke-SQLCommand
+
+    .LINK
+    Invoke-OracleCmd
   #>
   [CmdletBinding ()]
   Param (
@@ -51,11 +65,29 @@ function Set-SQLArguments {
     Get-CallerPreference -Cmdlet $PSCmdlet -SessionState $ExecutionContext.SessionState
     # Instantiate variable
     $SQLArguments = New-Object -TypeName "System.Collections.Specialized.OrderedDictionary"
+    # Optional properties
+    $OptionalProperties = @(
+      "AbortOnError",
+      "ConnectionTimeOut",
+      "EncryptConnection",
+      "IncludeSqlUserErrors",
+      "OutputSqlErrors",
+      "QueryTimeOut"
+    )
   }
   Process {
     # Connection string
-    $SQLArguments.Add("ServerInstance"        , $Properties.DatabaseServerInstance)
-    $SQLArguments.Add("Database"              , $Properties.DatabaseName)
+    switch ($Properties.DatabaseType) {
+      "Oracle" {
+        $SQLArguments.Add("Hostname"          , $Properties.DatabaseHost)
+        $SQLArguments.Add("PortNumber"        , $Properties.DatabasePort)
+        $SQLArguments.Add("ServiceName"       , $Properties.DatabaseInstance)
+      }
+      "SQLServer" {
+        $SQLArguments.Add("ServerInstance"    , $Properties.DatabaseServerInstance)
+        $SQLArguments.Add("Database"          , $Properties.DatabaseName)
+      }
+    }
     # Credentials
     $SQLArguments.Add("Credential"            , $Credentials)
     # TODO add check for SQL Server module
@@ -64,12 +96,13 @@ function Set-SQLArguments {
     # $SQLArguments.Add("Username"            , $Credentials.UserName)
     # $SQLArguments.Add("Password"            , $Credentials.GetNetworkCredential().Password)
     # Generic properties
-    $SQLArguments.Add("AbortOnError"          , $Properties.AbortOnError)
-    $SQLArguments.Add("ConnectionTimeOut"     , $Properties.ConnectionTimeOut)
-    $SQLArguments.Add("EncryptConnection"     , $Properties.EncryptConnection)
-    $SQLArguments.Add("IncludeSqlUserErrors"  , $Properties.IncludeSqlUserErrors)
-    $SQLArguments.Add("OutputSqlErrors"       , $Properties.OutputSqlErrors)
-    $SQLArguments.Add("QueryTimeOut"          , $Properties.QueryTimeOut)
+    foreach ($OptionalProperty in $OptionalProperties) {
+      # Check if property is provided
+      if ($Properties.$OptionalProperties) {
+        # Add property to argument list
+        $SQLArguments.Add($OptionalProperties, $Properties.$OptionalProperties)
+      }
+    }
     # Return SQL arguments
     return $SQLArguments
   }

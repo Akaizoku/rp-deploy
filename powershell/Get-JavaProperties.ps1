@@ -50,7 +50,7 @@ function Get-JavaProperties {
     File name:      Get-JavaProperties.ps1
     Author:         Florian CARRIER
     Creation date:  15/10/2019
-    Last modified:  03/02/2020
+    Last modified:  06/02/2020
   #>
   [CmdletBinding ()]
   Param (
@@ -122,10 +122,12 @@ function Get-JavaProperties {
           } else {
             $UserTableSpace = "USERS"
           }
+          # Define ANT log location
+          $LogFile = Join-Path -Path $Properties.LogDirectory -ChildPath "setup-oracle"
           # Select required properties
           $JavaProperties = [Ordered]@{
+            "logfile"                   = $LogFile
             "ora.cmdline"               = $Properties.CommandLine
-            "ora.db"                    = "//$($Properties.DatabaseHost):$($Properties.DatabasePort)/$($Properties.DatabaseInstance)"
             "ora.host"                  = $Properties.DatabaseHost
             "ora.password"              = $Properties.RPDBCredentials.GetNetworkCredential().Password
             "ora.port"                  = $Properties.DatabasePort
@@ -136,7 +138,7 @@ function Get-JavaProperties {
             "ora.usertablespace"        = $UserTableSpace
           } | ConvertTo-JavaProperty
         } else {
-          Write-Log -Type "ERROR" -Object "$($Properties.DatabaseType) database is not supported" -ErrorCode 1
+          Write-Log -Type "ERROR" -Object "$($Properties.DatabaseType) database is not supported" -ExitCode 1
         }
       }
       "WebApp" {
@@ -148,8 +150,8 @@ function Get-JavaProperties {
           "webapp.name"                 = $Properties.RPWebApplication
         } | ConvertTo-JavaProperty
       }
-      "default" {
-        Write-Log -Type "ERROR" -Object "$Type type is not supported" -ErrorCode 1
+      default {
+        Write-Log -Type "ERROR" -Object "$Type type is not supported" -ExitCode 1
       }
     }
     # Return Java properties

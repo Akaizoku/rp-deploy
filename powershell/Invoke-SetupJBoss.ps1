@@ -100,7 +100,7 @@ function Invoke-SetupJBoss {
         Write-Log -Type "WARN" -Object "Security domain $($Properties.DataSourceName) does not exist"
       }
       # ------------------------------------------------------------------------
-      # Remove custom web-server settings
+      # Remove custom application server settings
       # TODO
       # ------------------------------------------------------------------------
       # Check if grid configuration exists
@@ -133,15 +133,17 @@ function Invoke-SetupJBoss {
         Invoke-ReloadWildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Quiet
         $RemoveJDBCDriver = Remove-JDBCDriver -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Driver $Properties.DatabaseDriver
         Assert-JBossClientOutcome -Log $RemoveJDBCDriver -Object "$($Properties.DatabaseDriver) JDBC driver" -Verb "remove"
+        # WARNING Reload WildFly to prevent resource lock
+        Write-Log -Type "INFO" -Object "Reloading application server"
+        Invoke-ReloadWildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Quiet
       } else {
         Write-Log -Type "WARN"  -Object "JDBC driver $($Properties.DatabaseDriver) is not installed"
       }
       # ------------------------------------------------------------------------
       # Uninstall custom database module
       Write-Log -Type "INFO" -Object "Uninstalling $($Properties.JDBCDriverModule) module"
+      # WARNING modules can only be checked on the local server
       if (Test-Module -JBossHome $Properties.JBossHome -Module $Properties.JDBCDriverModule) {
-        # WARNING Remove corresponding JDBC driver and reload WildFly to prevent resource lock
-        Invoke-ReloadWildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Quiet
         $RemoveModule = Remove-Module -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Module $Properties.JDBCDriverModule
         if (Select-String -InputObject $RemoveModule -Pattern "Failed to delete" -SimpleMatch -Quiet) {
           # TODO fix file lock issue
@@ -158,15 +160,15 @@ function Invoke-SetupJBoss {
         Write-Log -Type "WARN"  -Object "Module $($Properties.JDBCDriverModule) is not installed"
       }
       # ------------------------------------------------------------------------
-      # Reload web-server
+      # Reload application server
       Invoke-ReloadWildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials
       # ------------------------------------------------------------------------
-      Write-Log -Type "CHECK" -Object "$($Server.Hostname) web-server de-configuration complete"
+      Write-Log -Type "CHECK" -Object "$($Server.Hostname) application server de-configuration complete"
     } else {
       # ------------------------------------------------------------------------
-      # Configure web-server
+      # Configure application server
       # ------------------------------------------------------------------------
-      Write-Log -Type "INFO" -Object "Setup web-server settings"
+      Write-Log -Type "INFO" -Object "Setup application server settings"
       # Define attributes
       $ServerSettings = @(
         '/subsystem=undertow/server=default-server/http-listener=default:write-attribute(name=max-header-size,value=500000000)',
@@ -185,15 +187,16 @@ function Invoke-SetupJBoss {
       }
       # Check outcome
       if ($SetupSettings -eq $true) {
-        Write-Log -Type "CHECK" -Object "Web-server configured successfully"
+        Write-Log -Type "CHECK" -Object "Application server configured successfully"
       } else {
-        Write-Log -Type "ERROR" -Object "Web-server configuration failed" -ExitCode 1
+        Write-Log -Type "ERROR" -Object "Application server configuration failed" -ExitCode 1
       }
 
       # ------------------------------------------------------------------------
-      # Add SQL JDBC module
+      # Add JDBC module
+      # WARNING modules can only be added on the local server
       Write-Log -Type "INFO" -Object "Install $($Properties.JDBCDriverModule) module"
-      # TODO fix error "WFLYJCA0041: Failed to load module for driver [mssql.jdbc]"
+      # TODO fix error "WFLYJCA0041: Failed to load module for driver [...]"
       $AddModule = Add-Module -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Module $Properties.JDBCDriverModule -Resources $Properties.JDBCDriverPath -Dependencies $Properties.JDBCDriverDependency
       # Check outcome
       if (Test-Module -JBossHome $Properties.JBossHome -Module $Properties.JDBCDriverModule) {
@@ -227,22 +230,14 @@ function Invoke-SetupJBoss {
         Assert-JBossClientOutcome -Log $AddSecurityDomain -Object "$($Properties.DataSourceName) security domain" -Verb "create"
         # Add authentication method
         Write-Log -Type "DEBUG" -Object "Set security domain authentication method"
+        # TODO add overwrite clause
         $SetAuthenticationMethod = Add-Resource -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Resource "/subsystem=security/security-domain=$SecurityDomain/authentication=\""classic\"""
-        if (Test-JBossClientOutcome -Log $SetAuthenticationMethod) {
-          Write-Log -Type "DEBUG" -Object "Security domain authentication method set successfully"
-        } else {
-          Write-Log -Type "WARN" -Object "Security domain authentication could not be set"
-          Write-Log -Type "ERROR" -Object $SetAuthenticationMethod -ExitCode 1
-        }
+        Assert-JBossClientOutcome -Log $SetAuthenticationMethod -Object "Security domain authentication method" -Verb "set" -Irregular "set"
         # Configure authentication
         Write-Log -Type "DEBUG" -Object "Configure security domain authentication"
+        # TODO add overwrite clause
         $ConfigureAuthentication = Add-Resource -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Resource "/subsystem=security/security-domain=$SecurityDomain/authentication=\""classic\""/login-module=\""$SecurityClass\"":add(code=\""$SecurityClass\"",flag=\""required\"",module-options={\""username\"" => \""$($Properties.RPDBCredentials.UserName)\"",\""password\"" =>\""$EncryptedPassword\"",\""managedConnectionFactoryName\"" =>\""name=java:/$($Properties.DataSourceName)\""})"
-        if (Test-JBossClientOutcome -Log $ConfigureAuthentication) {
-          Write-Log -Type "DEBUG" -Object "Security domain authentication configured successfully"
-        } else {
-          Write-Log -Type "WARN" -Object "Security domain authentication could not be configured"
-          Write-Log -Type "ERROR" -Object $ConfigureAuthentication -ExitCode 1
-        }
+        Assert-JBossClientOutcome -Log $ConfigureAuthentication -Object "Security domain authentication" -Verb "configure"
         # Register data-source with security domain
         Write-Log -Type "INFO" -Object "Register $($Properties.DataSourceName) data-source"
         $AddDataSource = Add-DataSource -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -DataSource $Properties.DataSourceName -Driver $Properties.DatabaseDriver -ConnectionURL $Properties.DatabaseURL -SecurityDomain $SecurityDomain -ConnectionChecker $ConnectionChecker -ExceptionSorter $ExceptionSorter
@@ -297,7 +292,6 @@ function Invoke-SetupJBoss {
           Write-Log -Type "ERROR" -Object "An error occurred while overwritting the existing Log4J configuration" -ExitCode 1
         }
       }
-      # TODO TODO TODO
       # Add new log configuration
       $LogSetupCmd = "/system-property=riskpro.log4j.properties.file:add(value=""$LogPropertiesURI"")"
       $LogSetupLog = Invoke-JBossClient -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -Command $LogSetupCmd
@@ -306,13 +300,13 @@ function Invoke-SetupJBoss {
       # Setup timeout
       # TODO -DgeneralTimeout
       # --------------------------------------------------------------------------
-      # Reload web-server
+      # Reload application server
       Invoke-ReloadWildFly -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials
       # --------------------------------------------------------------------------
       # Check database connection
       $DatabasePing = Test-DataSourceConnection -Path $Properties.JBossClient -Controller $Controller -Credentials $Credentials -DataSource $Properties.DataSourceName
       if (Test-JBossClientOutcome -Log $DatabasePing) {
-        Write-Log -Type "CHECK" -Object "$($Server.Hostname) web-server configuration complete"
+        Write-Log -Type "CHECK" -Object "$($Server.Hostname) application server configuration complete"
       } else {
         Write-Log -Type "ERROR" -Object "Failed to connect to RiskPro database using data-source $($Properties.DataSourceName)" -ErrorCode 1
       }

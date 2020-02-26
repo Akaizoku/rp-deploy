@@ -19,7 +19,7 @@ function Test-RiskPro {
     File name:      Test-RiskPro.ps1
     Author:         Florian Carrier
     Creation date:  22/01/2020
-    Last modified:  23/01/2020
+    Last modified:  07/02/2020
   #>
   [CmdletBinding(
     SupportsShouldProcess = $true
@@ -95,7 +95,7 @@ function Test-RiskPro {
     if (Test-RiskProBatchClientOutcome -Log $DeleteUser) {
       Write-Log -Type "WARN" -Object "Overwritting existing user ""$($RiskProTestCredentials.UserName)"""
     }
-    $CreateUser = Invoke-CreateUser -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -UserName $RiskProTestCredentials.UserName -EmployeeName $Properties.TestUserFullName -UserGroups "Administrators"
+    $CreateUser = Invoke-CreateUser -JavaPath $Properties.JavaPath -RiskProBatchClient $RiskProBatchClientProperties.RiskProBatchClientPath -ServerURI $RiskProBatchClientProperties.ServerURI -Credentials $RiskProAdminCredentials -JavaOptions $RiskProBatchClientProperties.JavaOptions -UserName $RiskProTestCredentials.UserName -EmployeeName $Properties.TestUserFullName -UserGroups $Properties.AdminUserGroup
     if (Test-RiskProBatchClientOutcome -Log $CreateUser) {
       # Set test user password
       Write-Log -Type "DEBUG" -Object "Set test user password"

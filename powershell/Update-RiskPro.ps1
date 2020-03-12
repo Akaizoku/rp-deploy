@@ -22,7 +22,7 @@ function Update-RiskPro {
     File name:      Update-RiskPro.ps1
     Author:         Florian Carrier
     Creation date:  25/11/2019
-    Last modified:  05/02/2020
+    Last modified:  09/03/2020
   #>
   [CmdletBinding (
     SupportsShouldProcess = $true
@@ -81,7 +81,7 @@ function Update-RiskPro {
     $DatabaseProperties = Get-JavaProperties -Properties $Properties -Type "Database"
     # Test database connection
     Write-Log -Type "INFO" -Object "Checking database server connectivity"
-    $DatabaseConnection = Test-SQLConnection -Server $Properties.DatabaseServerInstance -Database "master" -Credentials $Properties.DBACredentials
+    $DatabaseCheck = Test-DatabaseConnection -DatabaseVendor $Properties.DatabaseType -Hostname $Properties.DatabaseHost -PortNumber $Properties.DatabasePort -Instance $Properties.DatabaseInstance -Credentials $Properties.DBACredentials
     if (-Not $DatabaseConnection) {
       Write-Log -Type "ERROR" -Object "Unable to reach database server ($($Properties.DatabaseServerInstance))" -ExitCode 1
     }

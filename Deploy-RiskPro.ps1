@@ -24,11 +24,17 @@
   - uninstall:  Uninstall RiskPro
   - upgrade:    Upgrade RiskPro
 
+  .PARAMETER Version
+  The optional version parameter allows to overwrite the application version defined in the configuration file.
+
+  .PARAMETER Unattended
+  The unattended switch define if the script should run in silent mode without any user interaction.
+
   .NOTES
   File name:      Deploy-RiskPro.ps1
   Author:         Florian CARRIER
   Creation date:  27/11/2018
-  Last modified:  06/02/2020
+  Last modified:  11/03/2020
   Dependencies:   - PowerShell Tool Kit (PSTK)
                   - WildFly PowerShell Module (PSWF)
                   - RiskPro PowerShell Module (PSRP)
@@ -136,7 +142,7 @@ Begin {
   # ----------------------------------------------------------------------------
   # Modules
   # ----------------------------------------------------------------------------
-  $Modules = @("PSTK", "PSWF", "PSRP", "SQLServer")
+  $Modules = @("PSTK", "PSWF", "PSRP")
   foreach ($Module in $Modules) {
     # Workaround for issue RPD-2
     $Force = $Module -ne "SQLServer"
@@ -299,6 +305,23 @@ Begin {
     $DatabaseProperties.Add("JDBCDriverModule", $Properties.SQLJDBCDriverModule )
     $DatabaseProperties.Add("JDBCDriverClass" , $Properties.SQLJDBCDriverClass  )
     $DatabaseProperties.Add("JDBCDriverPath"  , (Join-Path -Path $Properties.RPHomeDirectory -ChildPath $Properties.SQLJDBCDriverPath))
+    # Load SQLServer module
+    $Modules = @("SQLServer")
+    foreach ($Module in $Modules) {
+      try {
+        # Check if module is installed
+        Import-Module -Name "$Module" -ErrorAction "Stop"
+        Write-Log -Type "CHECK" -Object "The $Module module was successfully loaded."
+      } catch {
+        # If module is not installed then check if package is available locally
+        try {
+          Import-Module -Name (Join-Path -Path $LibDirectory -ChildPath $Module) -ErrorAction "Stop"
+          Write-Log -Type "CHECK" -Object "The $Module module was successfully loaded from the library directory."
+        } catch {
+          Throw "The $Module library could not be loaded. Make sure it has been made available on the machine or manually put it in the ""$LibDirectory"" directory"
+        }
+      }
+    }
   } elseif ($DatabaseProperties.DatabaseType -eq "Oracle") {
     $Properties.Add("DatabaseXML", $Properties.OracleXML)
     $DatabaseProperties.Add("DatabaseDriver"  , $Properties.ORADriver           )

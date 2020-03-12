@@ -16,7 +16,7 @@ function Invoke-MigrateDatabase {
     File name:      Invoke-MigrateDatabase.ps1
     Author:         Florian Carrier
     Creation date:  25/11/2019
-    Last modified:  22/01/2020
+    Last modified:  09/03/2020
   #>
   [CmdletBinding (
     SupportsShouldProcess = $true
@@ -50,8 +50,8 @@ function Invoke-MigrateDatabase {
       return $true
     } else {
       $ErrorPatterns = @(
-        [RegEx]::New('(?<=(\[ERROR\]).+(com\.frsglobal\.migrator\.console\.Launcher -- )).+'),
-        [RegEx]::New('(?<=(\[SEVERE\]).+(com\.frsglobal\.migrator\.console\.Launcher -- )).+')
+        [RegEx]::New('(?<=(\[ERROR\])).+'),
+        [RegEx]::New('(?<=(\[SEVERE\])).+')
       )
       # Retrieve errors
       foreach ($Line in ($Migration -split "`n")) {
